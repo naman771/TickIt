@@ -3,7 +3,7 @@
 ## Before presenting
 
 1. Start with `docker compose up --build -d`, or run the local Java setup from the README.
-2. Open the app in two windows. Pick Alex in one and Sam in the other.
+2. Open the app in two windows. Use **Find tickets** to open the same event in both windows. Pick Alex in one and Sam in the other.
 3. Confirm `curl -f http://localhost:8080/actuator/health` returns `UP`.
 4. Keep a terminal ready at the repository root. Use a free seat, not seeded seat A1.
 
@@ -11,13 +11,13 @@
 
 **0:00 — Explain the problem.** Many users can try the same seat. A hold gives one user time to check out; a database uniqueness constraint prevents duplicate confirmed bookings.
 
-**0:30 — Show live holds.** Alex selects a free seat and clicks Hold. Sam sees the same seat turn amber. Point out the two-minute countdown.
+**0:30 — Show live holds.** Open an event, choose a seat, then select **Reserve this seat** as Alex. Sam sees the same seat become reserved. Point out the two-minute countdown.
 
 **1:15 — Show release or expiration.** Release Alex's hold and watch it become available in Sam's window. For a quicker expiration demo, start the local app with `APP_SEAT_HOLD_TTL_SECONDS=10 mvn spring-boot:run` before presenting.
 
-**2:00 — Confirm a booking.** Hold a free seat and click Confirm. Both windows show it as booked. No payment is taken.
+**2:00 — Confirm a booking.** Hold a free seat and select **Confirm reservation**. Both windows show it as booked. No payment is taken.
 
-**2:45 — Demonstrate rate limiting.** Click the 25-request burst button. Repeated requests by that simulated user can succeed idempotently until the bucket is exhausted; observe `429` responses. Give the bucket four seconds to refill before continuing normal checkout.
+**2:45 — Demonstrate rate limiting.** Open **The project → Developer demonstration** and run the 25-request burst. Repeated requests by that simulated user can succeed idempotently until the bucket is exhausted; observe `429` responses. Give the bucket four seconds to refill before continuing normal checkout.
 
 **3:30 — Show contention proof.**
 

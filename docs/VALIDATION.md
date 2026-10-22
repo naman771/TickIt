@@ -31,7 +31,11 @@ This is a bounded contention test, not a throughput measurement or proof of beha
 
 Headless Chrome checked two browser windows and a 390px mobile viewport:
 
-- Application assets loaded while non-local network requests were blocked.
+- Application scripts and event photographs loaded while non-local network requests were blocked.
+- Category filtering and artist search returned the expected event cards.
+- Booking confirmation led to the new reservation in My tickets.
+- Account switching was blocked during an active hold.
+- Desktop/mobile discovery and checkout layouts were checked.
 - Hold acquisition and release updated the second window.
 - Successful checkout updated both windows to `BOOKED`.
 - A short, 10-second test hold expired and returned to `FREE`.
