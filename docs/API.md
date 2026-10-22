@@ -61,3 +61,14 @@ It returns infrastructure availability, integration flags, aggregate catalog/acc
 ## Live updates
 
 The public read-only seat map uses SockJS `/ws` and STOMP `/topic/seats/{eventId}`. Clients reconcile with the seat API after reconnecting and every five seconds. Messages are advisory; PostgreSQL remains authoritative for confirmed bookings.
+
+## Developer assets
+
+All routes below require a verified session whose subject is in `DEVELOPER_SUBJECTS`. Anonymous requests return 401; customer accounts return 403. Disabled or unavailable storage returns 503.
+
+| Method | Route | Behavior |
+|---|---|---|
+| GET | `/api/developer/assets` | List up to 100 workspace objects as `{id, size}`. |
+| POST | `/api/developer/assets` | Multipart field `file`, 1 byte–5 MB; returns 201 with `{id, size}`. |
+| GET | `/api/developer/assets/{id}` | Download a private object as an attachment; unknown object returns 404. |
+| DELETE | `/api/developer/assets/{id}` | Delete a workspace object; returns 204. |

@@ -24,6 +24,10 @@ Clerk production setup requires DNS configuration. A Render-assigned subdomain d
 
 Once identity is configured, set the provider variables directly in Render, including the exact hosted origin and the verified developer subject. Never place secrets in `render.yaml`. Re-check anonymous API rejection, customer account ownership, developer authorization, and Google signup on the actual hosted URL.
 
+## Optional private storage
+
+After the Neon bucket is provisioned, add `APP_STORAGE_ENABLED=true`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3` and `AWS_REGION` directly to the Render service environment from your local ignored Neon environment file. Keep the bucket private. The Java application uses these variables directly; Node tooling is not needed inside the Docker runtime. Do not put credential values in the Blueprint.
+
 ## Free-tier limits
 
 Render Free services sleep when idle and have monthly usage limits. Key Value Free is not durable: active holds and rate-limit buckets can be lost on restart. Confirmed records belong in PostgreSQL. Neon Free also has storage and compute limits. Exceeding the free allowance must lead to a limit or suspension, not an authorized paid upgrade.

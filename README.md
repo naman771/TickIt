@@ -48,9 +48,9 @@ Prefer running Java locally? See [local development and configuration](docs/DEVE
 
 ## Verification
 
-**41 tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
+**48 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
 
-CI runs the suite against PostgreSQL and Redis, validates Docker Compose, and builds the container. [Validation details →](docs/VALIDATION.md)
+An additional opt-in live Neon test verifies database reads and private storage upload, listing, download integrity, anonymous denial and deletion. CI runs the local suite against PostgreSQL and Redis, validates Docker Compose, and builds the container. [Validation details →](docs/VALIDATION.md)
 
 ```bash
 # Requires a separate tickit_test database and local PostgreSQL/Redis.
@@ -66,6 +66,6 @@ Customer signup and Google sign-in use Clerk. The API verifies signed sessions a
 
 Without provider configuration the website permits browsing and keeps protected operations closed. Real payment checkout is the next phase; the API cannot issue unpaid tickets. Sample catalog seeding is opt-in for local development.
 
-The intended domains are `tickit.site` and `developers.tickit.site`; domain ownership is pending. See [production setup and account requirements](docs/PRODUCTION_SETUP.md).
+[Neon setup](docs/NEON_SETUP.md) connects PostgreSQL and private workspace file storage. A [free deployment Blueprint](docs/FREE_DEPLOYMENT.md) targets Render and Neon free plans; custom domain registration and paid services are outside the current budget. See [production setup and account requirements](docs/PRODUCTION_SETUP.md).
 
 [API reference](docs/API.md) · [Architecture](docs/ARCHITECTURE.md) · [Development](docs/DEVELOPMENT.md) · [Roadmap](docs/ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Asset credits](docs/ASSETS.md)

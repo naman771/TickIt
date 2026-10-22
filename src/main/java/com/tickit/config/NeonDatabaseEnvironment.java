@@ -5,6 +5,7 @@ import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.env.Profiles;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -16,6 +17,8 @@ public class NeonDatabaseEnvironment implements EnvironmentPostProcessor, Ordere
     @Override public int getOrder() { return Ordered.LOWEST_PRECEDENCE; }
 
     @Override public void postProcessEnvironment(ConfigurableEnvironment env, SpringApplication application) {
+        // Local booking tests reset data. Never redirect that profile to a production provider URL.
+        if (env.acceptsProfiles(Profiles.of("test"))) return;
         String supplied = env.getProperty("DATABASE_URL");
         if (supplied == null || supplied.isBlank()) return;
         Map<String, Object> properties = new LinkedHashMap<>();

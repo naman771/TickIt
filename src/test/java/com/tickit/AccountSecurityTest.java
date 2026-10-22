@@ -75,6 +75,27 @@ class AccountSecurityTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.services.postgresql", is(true)))
                 .andExpect(jsonPath("$.catalog.events", greaterThan(0)));
     }
+    @Test void assetApiRejectsAnonymousAndCustomerAccess() throws Exception {
+        mvc.perform(get("/api/developer/assets")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/developer/assets").with(jwt().jwt(j -> j.subject("auth_test_owner"))))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete("/api/developer/assets/11111111-1111-1111-1111-111111111111")
+                .with(jwt().jwt(j -> j.subject("auth_test_owner")))).andExpect(status().isForbidden());
+    }
+    @Test void assetApiRejectsInvalidSizeAndIdentifiers() throws Exception {
+        mvc.perform(multipart("/api/developer/assets").file(new org.springframework.mock.web.MockMultipartFile(
+                "file", "oversized.bin", "application/octet-stream", new byte[5 * 1024 * 1024 + 1]))
+                .with(jwt().jwt(j -> j.subject("auth_test_developer")))).andExpect(status().isPayloadTooLarge());
+        mvc.perform(multipart("/api/developer/assets").file(new org.springframework.mock.web.MockMultipartFile(
+                "file", "empty.bin", "application/octet-stream", new byte[0]))
+                .with(jwt().jwt(j -> j.subject("auth_test_developer")))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/developer/assets/not-an-object-id")
+                .with(jwt().jwt(j -> j.subject("auth_test_developer")))).andExpect(status().isBadRequest());
+    }
+    @Test void assetApiFailsClosedWithoutStorageConfiguration() throws Exception {
+        mvc.perform(get("/api/developer/assets").with(jwt().jwt(j -> j.subject("auth_test_developer"))))
+                .andExpect(status().isServiceUnavailable());
+    }
     @Test void publicConfigDoesNotExposeSecrets() throws Exception {
         mvc.perform(get("/api/public/config")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.checkoutEnabled", is(false)))

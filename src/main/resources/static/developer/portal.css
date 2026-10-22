@@ -279,6 +279,19 @@ p {
   color: #204e42;
   font-size: 11px;
 }
+#assetUpload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+#assetFile { max-width: 100%; }
+#assetStatus { min-height: 1.5em; }
+#assetList .status-row { flex-wrap: wrap; gap: 14px; }
+#assetList .status-row > span { overflow-wrap: anywhere; min-width: 0; }
+#assetList .status-row > span:last-child { display: flex; gap: 8px; }
+button:disabled { opacity: .55; cursor: wait; }
 button:focus-visible,
 a:focus-visible {
   outline: 3px solid #94b9aa;

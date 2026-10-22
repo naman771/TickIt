@@ -30,6 +30,11 @@ spring:
       repositories:
         enabled: false
 
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
   # ── Email ───────────────────────────────────────────────
   mail:
     host: ${SMTP_HOST:smtp.gmail.com}
@@ -45,6 +50,9 @@ spring:
 
 # ── Application ─────────────────────────────────────────
 app:
+  storage:
+    enabled: ${APP_STORAGE_ENABLED:false}
+    bucket: ${NEON_STORAGE_BUCKET:assets}
   developer:
     host: ${DEVELOPER_HOST:developers.tickit.site}
   seed:

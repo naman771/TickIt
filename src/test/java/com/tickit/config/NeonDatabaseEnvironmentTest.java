@@ -34,4 +34,14 @@ class NeonDatabaseEnvironmentTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("DATABASE_URL must be a valid PostgreSQL connection URL");
     }
+
+    @Test void localTestProfileNeverUsesProductionProviderUrls() {
+        MockEnvironment env = new MockEnvironment().withProperty("DATABASE_URL",
+                "postgresql://owner:secret@ep-production.neon.tech/production")
+                .withProperty("spring.datasource.url", "jdbc:postgresql://localhost/tickit_test");
+        env.setActiveProfiles("test");
+        new NeonDatabaseEnvironment().postProcessEnvironment(env, new SpringApplication());
+        assertThat(env.getProperty("spring.datasource.url")).isEqualTo("jdbc:postgresql://localhost/tickit_test");
+        assertThat(env.getProperty("spring.flyway.url")).isNull();
+    }
 }

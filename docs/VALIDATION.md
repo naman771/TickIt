@@ -34,3 +34,7 @@ Earlier booking-flow checks exercised holds, release, expiration and confirmatio
 CI runs Maven tests, syntax-checks all three frontend scripts and the authenticated probe, validates Compose, and builds the container.
 
 Still required: live Google/email signup with the user's Clerk application, authorized developer login, Razorpay test/live payments, signed payment webhooks, durable ticket delivery, domain ownership/DNS, and hosted staging validation. Details are in [production setup](PRODUCTION_SETUP.md).
+
+## Neon integration validation
+
+The expanded local suite now has 48 passing tests, including provider URL conversion, production/test database isolation, developer asset authorization and upload limits. One additional live-cloud test is skipped in ordinary CI and passes separately when explicitly enabled. It verifies real Neon database reads plus private storage upload, list, byte-identical download, anonymous denial, delete and subsequent 404 through application controllers. Browser checks cover the developer file controls and mobile layout with explicit UI fixtures; they do not claim a real browser OAuth session was exercised.

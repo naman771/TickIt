@@ -51,11 +51,17 @@ function render(section) {
     );
   const titles = {
     overview: "Overview",
+    storage: "Asset storage",
     authentication: "Authentication",
     payments: "Payments",
     email: "Email delivery",
   };
   document.getElementById("pageLabel").textContent = titles[section];
+  if (section === "storage") {
+    content.innerHTML = `<div class="section-title"><div><div class="eyebrow">PRIVATE FILES</div><h1>Asset storage</h1><p>Private workspace files stored with Neon. Maximum 5 MB per file.</p></div>${badge(overview.services.objectStorage)}</div><section class="panel"><form id="assetUpload"><label for="assetFile">Choose a file</label> <input id="assetFile" name="file" type="file" required /><button class="refresh" type="submit">Upload file</button></form><p id="assetStatus" role="status" aria-live="polite"></p><div id="assetList">Loading files…</div><p>Showing up to 100 files. Files download as attachments.</p></section>`;
+    loadAssets();
+    return;
+  }
   if (section === "overview") {
     content.innerHTML = `<div class="section-title"><div><div class="eyebrow">PLATFORM OPERATIONS</div><h1>Workspace overview</h1><p>Current system and integration status.</p></div><button class="refresh" data-refresh>Refresh status</button></div><div class="stats">${Object.entries(
       overview.catalog,
@@ -66,7 +72,7 @@ function render(section) {
       )
       .join(
         "",
-      )}</div><div class="panels"><section class="panel"><h2>Infrastructure</h2><div class="status-row"><span>PostgreSQL</span>${badge(overview.services.postgresql, "Healthy", "Unavailable")}</div><div class="status-row"><span>Redis</span>${badge(overview.services.redis, "Healthy", "Unavailable")}</div></section><section class="panel"><h2>Integrations</h2><div class="status-row"><span>Clerk authentication</span>${badge(overview.integrations.authentication)}</div><div class="status-row"><span>Razorpay checkout</span>${badge(overview.integrations.payments)}</div><div class="status-row"><span>Transactional email</span>${badge(overview.integrations.email, "Enabled", "Disabled")}</div></section></div><div class="checked-at">CHECKED AT ${escapeHtml(overview.checkedAt)}</div>`;
+      )}</div><div class="panels"><section class="panel"><h2>Infrastructure</h2><div class="status-row"><span>PostgreSQL</span>${badge(overview.services.postgresql, "Healthy", "Unavailable")}</div><div class="status-row"><span>Redis</span>${badge(overview.services.redis, "Healthy", "Unavailable")}</div><div class="status-row"><span>Neon Object Storage</span>${badge(overview.services.objectStorage, "Healthy", "Unavailable")}</div></section><section class="panel"><h2>Integrations</h2><div class="status-row"><span>Clerk authentication</span>${badge(overview.integrations.authentication)}</div><div class="status-row"><span>Razorpay checkout</span>${badge(overview.integrations.payments)}</div><div class="status-row"><span>Transactional email</span>${badge(overview.integrations.email, "Enabled", "Disabled")}</div></section></div><div class="checked-at">CHECKED AT ${escapeHtml(overview.checkedAt)}</div>`;
     return;
   }
   const details = {
@@ -132,3 +138,63 @@ TickItAuth.onChange((user) => {
 TickItAuth.init()
   .then(load)
   .catch((error) => message(error.message));
+
+async function assetRequest(path = "", options = {}) {
+  const token = await TickItAuth.token();
+  const response = await fetch(`/api/developer/assets${path}`, {
+    ...options, headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(response.status === 503
+    ? "Asset storage is unavailable. Please try again later."
+    : "The file operation failed. Check access and the 5 MB file limit.");
+  return response;
+}
+async function loadAssets() {
+  try {
+    const files = await (await assetRequest()).json();
+    const list = document.getElementById("assetList");
+    if (!list) return;
+    list.innerHTML = files.length ? files.map(file => `<div class="status-row"><span>${escapeHtml(file.id)}<small> · ${Number(file.size).toLocaleString()} bytes</small></span><span><button class="refresh" data-download-asset="${escapeHtml(file.id)}">Download</button> <button class="refresh" data-delete-asset="${escapeHtml(file.id)}">Delete</button></span></div>`).join("") : "No files uploaded yet.";
+  } catch (error) { assetStatus(error.message); }
+}
+function assetStatus(text) {
+  const status = document.getElementById("assetStatus");
+  if (status) status.textContent = text;
+}
+document.addEventListener("submit", async event => {
+  if (event.target.id !== "assetUpload") return;
+  event.preventDefault();
+  const file = document.getElementById("assetFile").files[0];
+  if (!file || file.size === 0 || file.size > 5 * 1024 * 1024) {
+    assetStatus("Choose a file between 1 byte and 5 MB."); return;
+  }
+  const button = event.target.querySelector("button");
+  button.disabled = true;
+  try {
+    const body = new FormData(); body.append("file", file);
+    await assetRequest("", { method: "POST", body });
+    event.target.reset(); assetStatus("File uploaded."); await loadAssets();
+  } catch (error) { assetStatus(error.message); }
+  finally { button.disabled = false; }
+});
+document.addEventListener("click", async event => {
+  const download = event.target.closest("[data-download-asset]");
+  const remove = event.target.closest("[data-delete-asset]");
+  if (!download && !remove) return;
+  const button = download || remove;
+  button.disabled = true;
+  try {
+    if (remove) {
+      if (!window.confirm("Delete this file permanently?")) return;
+      await assetRequest(`/${encodeURIComponent(remove.dataset.deleteAsset)}`, { method: "DELETE" });
+      assetStatus("File deleted."); await loadAssets();
+    } else {
+      const response = await assetRequest(`/${encodeURIComponent(download.dataset.downloadAsset)}`);
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a"); link.href = url;
+      link.download = `${download.dataset.downloadAsset}.bin`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  } catch (error) { assetStatus(error.message); }
+  finally { button.disabled = false; }
+});
