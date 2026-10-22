@@ -1,0 +1,70 @@
+spring:
+  application:
+    name: tickit
+
+  # ── PostgreSQL ──────────────────────────────────────────
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:tickit}
+    username: ${DB_USER:naman}
+    password: ${DB_PASS:}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate          # Flyway owns the schema
+    open-in-view: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  # ── Flyway ──────────────────────────────────────────────
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  # ── Redis ───────────────────────────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # ── Email ───────────────────────────────────────────────
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASS:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+# ── Application ─────────────────────────────────────────
+app:
+  seat-hold:
+    ttl-seconds: 120              # How long a seat is held before auto-release
+  rate-limit:
+    capacity: 20                  # Max tokens per bucket
+    refill-rate: 5                # Tokens added per second
+    window-seconds: 60            # Window for the bucket reset
+  email:
+    from: ${EMAIL_FROM:noreply@tickit.live}
+    enabled: ${EMAIL_ENABLED:false}
+
+# ── Actuator ─────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.tickit: DEBUG
+    org.springframework.web.socket: DEBUG
