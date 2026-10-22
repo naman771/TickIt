@@ -1,203 +1,98 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TickIt — Real-Time Concurrency-Safe Ticket Booking</title>
-  
-  <script src="/vendor/sockjs.min.js"></script>
-  <script src="/vendor/stomp.min.js"></script>
-
-  <link rel="stylesheet" href="/css/style.css">
-</head>
-<body>
-
-  <!-- Top Navigation Bar -->
-  <header class="navbar">
-    <div class="logo-group">
-      <div class="logo-icon">⚡</div>
-      <div>
-        <div class="logo-title">TickIt</div>
-      </div>
-      <span class="badge-pill">
-        <span class="pulse-dot"></span>
-        Live seat availability
-      </span>
-    </div>
-
-    <div class="nav-actions">
-      <div class="user-selector-container">
-        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Simulated User:</span>
-        <select id="userSelect" class="user-select">
-          <!-- Populated by app.js -->
-        </select>
-      </div>
-    </div>
-  </header>
-
-  <main class="app-container">
-    
-    <!-- Top Events Showcase -->
-    <section>
-      <div class="section-header">
-        <div>
-          <h1 class="section-title">Trending Live Events</h1>
-          <p class="section-subtitle">Pick your event. Find your seat. Reserve it before it’s gone.</p>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Discover live music and unforgettable experiences. Choose your seat and reserve it in real time with TickIt."
+    />
+    <meta name="theme-color" content="#f7f7f2" />
+    <title>TickIt — Be there.</title>
+    <link rel="icon" href="/images/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/style.css" />
+    <script defer src="/vendor/sockjs.min.js"></script>
+    <script defer src="/vendor/stomp.min.js"></script>
+    <script defer src="/js/app.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="#events" aria-label="TickIt home"
+          ><svg viewBox="0 0 28 28" fill="none" aria-hidden="true">
+            <path
+              d="M4 7h20v5a2 2 0 0 0 0 4v5H4v-5a2 2 0 0 0 0-4V7Z"
+              stroke="currentColor"
+              stroke-width="1.8"
+            />
+            <path
+              d="M17 8v3m0 3v2m0 2v2"
+              stroke="currentColor"
+              stroke-width="1.5"
+            /></svg
+          >tickit<span class="brand-period">.</span></a
+        >
+        <nav aria-label="Main navigation">
+          <a href="#events" data-nav="events">Discover</a
+          ><a href="#tickets" data-nav="tickets">My tickets</a
+          ><a href="#about" data-nav="about">The project</a>
+        </nav>
+        <div class="header-account">
+          <span class="account-caption">DEMO ACCOUNT</span
+          ><label class="account-select"
+            ><svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <circle
+                cx="10"
+                cy="6"
+                r="3"
+                stroke="currentColor"
+                stroke-width="1.4"
+              />
+              <path
+                d="M4 17v-2a6 6 0 0 1 12 0v2"
+                stroke="currentColor"
+                stroke-width="1.4"
+              /></svg
+            ><select id="userSelect" aria-label="Demo account">
+              <option value="1">Alex Morgan</option>
+              <option value="2">Sam Taylor</option>
+              <option value="3">Jordan Lee</option>
+            </select></label
+          >
         </div>
       </div>
-      <div id="eventsContainer" class="events-grid">
-        <!-- Event cards rendered dynamically -->
+    </header>
+    <main id="app">
+      <div class="loading-state">
+        <span class="loader"></span>Finding your next experience…
       </div>
-    </section>
-
-    <!-- Main Booking Arena & Control Panels -->
-    <section class="interactive-section">
-      
-      <!-- Interactive Stadium / Arena Seat Map -->
-      <div class="arena-card">
-        <div class="card-title-bar">
-          <div>
-            <h2 id="currentEventName" class="card-title">Select an event</h2>
-            <p id="currentVenue" class="section-subtitle">Stadium Arena</p>
-          </div>
-          <span id="availableBadge" class="badge-pill">Updating seats...</span>
-        </div>
-
-        <!-- Stage Representation -->
-        <div class="stage-wrapper">
-          <div class="stage-curved"></div>
-          <div class="stage-label">MAIN PERFORMANCE STAGE / SCREEN</div>
-        </div>
-
-        <!-- Legend -->
-        <div class="seat-legend">
-          <div class="legend-item">
-            <span class="legend-swatch free"></span>
-            <span>Available (Free)</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-swatch held"></span>
-            <span>Held (2 minutes)</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-swatch booked"></span>
-            <span>Booked</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-swatch selected"></span>
-            <span>Selected</span>
-          </div>
-        </div>
-
-        <!-- Seat Grid -->
-        <div id="seatGrid" class="seat-grid-container">
-          <!-- Seats dynamically populated by app.js -->
-        </div>
+    </main>
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <a href="#events" class="brand"
+          >tickit<span class="brand-period">.</span></a
+        >
+        <p>Less scrolling. More being there.</p>
+        <span
+          >A ticketing MVP by Naman <span class="footer-dot">·</span>
+          <a
+            href="https://github.com/naman771/TickIt"
+            target="_blank"
+            rel="noopener"
+            >View source ↗</a
+          ></span
+        >
       </div>
-
-      <!-- Right Column: Checkout & Bot Rate-Limit Test Console -->
-      <aside class="side-panel">
-        
-        <!-- Booking & Hold Panel -->
-        <div class="sidebar-card">
-          <div class="card-title-bar">
-            <h3 class="card-title">Reservation Cart</h3>
-            <span style="font-size: 0.8rem; color: var(--accent-cyan); font-weight: 600;">Demo checkout</span>
-          </div>
-
-          <!-- Hold Countdown Timer -->
-          <div id="holdTimerBox" class="hold-timer-container">
-            <div class="hold-timer-header">
-              <span>⏳ Your seat is reserved</span>
-              <span id="holdTimerText">2:00</span>
-            </div>
-            <div class="hold-progress-bar">
-              <div id="holdProgressFill" class="hold-progress-fill"></div>
-            </div>
-          </div>
-
-          <!-- Selected Seat Summary -->
-          <div class="checkout-details">
-            <div class="detail-row">
-              <span>Selected Seat:</span>
-              <span id="selectedSeatLabel" class="detail-value">None selected</span>
-            </div>
-            <div class="detail-row">
-              <span>Base Price:</span>
-              <span id="selectedSeatPrice" class="detail-value">$0.00</span>
-            </div>
-            <div class="detail-row">
-              <span>Reservation:</span>
-              <span class="detail-value" style="color: var(--accent-emerald);">2-minute hold</span>
-            </div>
-            <div class="detail-row">
-              <span>Checkout:</span>
-              <span class="detail-value" style="color: var(--accent-cyan);">Confirmation only · no payment</span>
-            </div>
-          </div>
-
-          <!-- Actions -->
-          <button id="holdBtn" class="btn-primary" disabled>
-            🔒 1. Hold Seat (120s)
-          </button>
-          
-          <button id="bookBtn" class="btn-primary" style="background: linear-gradient(135deg, #00e676 0%, #00b0ff 100%); box-shadow: 0 4px 18px rgba(0, 230, 118, 0.35);" disabled>
-            ⚡ 2. Confirm Booking
-          </button>
-
-          <button id="releaseBtn" class="btn-secondary" style="display: none;">
-            Release Hold
-          </button>
-        </div>
-
-        <!-- Bot Attack & Rate Limiter Tester -->
-        <div class="sidebar-card bot-simulator">
-          <div class="card-title-bar">
-            <h3 class="card-title">🛡️ Bot & Flash Sale Shield</h3>
-            <span class="badge-pill" style="color: var(--accent-cyan); border-color: rgba(0, 242, 254, 0.4); background: rgba(0, 242, 254, 0.1);">
-              Token Bucket
-            </span>
-          </div>
-          <p class="bot-desc">
-            Simulate an aggressive bot firing 25 concurrent requests in 1 second. Requests above the available quota receive <strong>HTTP 429</strong>. Repeated holds by the same demo user are idempotent.
-          </p>
-
-          <div class="bot-stats-grid">
-            <div class="bot-stat-box">
-              <div id="botSentCount" class="bot-stat-val sent">0</div>
-              <div class="bot-stat-lbl">Sent</div>
-            </div>
-            <div class="bot-stat-box">
-              <div id="botSuccessCount" class="bot-stat-val success">0</div>
-              <div class="bot-stat-lbl">200 OK</div>
-            </div>
-            <div class="bot-stat-box">
-              <div id="botBlockedCount" class="bot-stat-val blocked">0</div>
-              <div class="bot-stat-lbl">Blocked (429/409)</div>
-            </div>
-          </div>
-
-          <button id="botRunBtn" class="btn-danger">
-            🚀 Launch Bot Stress Test (25 requests)
-          </button>
-
-          <div class="card-title-bar" style="margin-top: 0.2rem;">
-            <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700;">REAL-TIME GATEWAY LOG</span>
-          </div>
-          <div id="botLog" class="log-box">
-            <div class="log-entry ok">[READY] Rate limiter listening on /api/holds and /api/bookings</div>
-          </div>
-        </div>
-
-      </aside>
-
-    </section>
-
-  </main>
-
-  <!-- Notification Toast Container -->
-  <div id="toastContainer" class="toast-container"></div>
-
-  <script src="/js/app.js"></script>
-</body>
+      <div class="footer-note">
+        Demonstration only. Reservations use simulated accounts and no payment
+        is collected.
+      </div>
+    </footer>
+    <div id="notifications" class="notifications" aria-live="polite"></div>
+    <dialog
+      id="confirmationDialog"
+      class="confirmation-dialog"
+      aria-labelledby="confirmationTitle"
+    ></dialog>
+  </body>
 </html>

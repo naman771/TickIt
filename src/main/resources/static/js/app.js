@@ -1,546 +1,571 @@
-// TickIt Interactive Client Application
-let currentEvent = null;
-let currentSeats = [];
-let selectedSeat = null;
-let currentHold = null; // { seatId, timerInterval, secondsRemaining }
-let stompClient = null;
-let currentSubscription = null;
-
+"use strict";
+const ICONS = {
+  arrow: '<path d="M4 10h12m-5-5 5 5-5 5"/>',
+  back: '<path d="M16 10H4m5-5-5 5 5 5"/>',
+  search: '<circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/>',
+  pin: '<path d="M16 8c0 5-6 9-6 9S4 13 4 8a6 6 0 1 1 12 0Z"/><circle cx="10" cy="8" r="2"/>',
+  calendar:
+    '<rect x="3" y="4" width="14" height="13" rx="2"/><path d="M6 2v4m8-4v4M3 9h14"/>',
+  music:
+    '<path d="M8 14V4l9-2v10M8 7l9-2"/><ellipse cx="5" cy="14.5" rx="3" ry="2.5"/><ellipse cx="14" cy="12.5" rx="3" ry="2.5"/>',
+  flag: '<path d="M4 18V3c4-3 8 3 12 0v8c-4 3-8-3-12 0"/>',
+  ticket:
+    '<path d="M2 5h16v4a2 2 0 0 0 0 4v3H2v-3a2 2 0 0 0 0-4V5Z"/><path d="M12 6v2m0 2v2m0 2v1"/>',
+  lock: '<rect x="4" y="8" width="12" height="9" rx="2"/><path d="M6 8V6a4 4 0 0 1 8 0v2"/>',
+  check: '<path d="m4 10 4 4 8-8"/>',
+};
+const icon = (name) =>
+  `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ICONS.arrow}</svg>`;
+const esc = (value) =>
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
 const USERS = [
-  { id: 1, name: "Alex Morgan", email: "alex@tickit.live" },
-  { id: 2, name: "Sam Taylor", email: "sam@tickit.live" },
-  { id: 3, name: "Flash Bot (Abusive)", email: "flashbot@loadtest.local" }
+  { id: 1, name: "Alex Morgan" },
+  { id: 2, name: "Sam Taylor" },
+  { id: 3, name: "Jordan Lee" },
 ];
-
-let activeUser = USERS[0];
-
-// DOM elements
-const eventsContainer = document.getElementById("eventsContainer");
-const seatGrid = document.getElementById("seatGrid");
-const currentEventName = document.getElementById("currentEventName");
-const currentVenue = document.getElementById("currentVenue");
-const availableBadge = document.getElementById("availableBadge");
-
-const selectedSeatLabel = document.getElementById("selectedSeatLabel");
-const selectedSeatPrice = document.getElementById("selectedSeatPrice");
-const holdBtn = document.getElementById("holdBtn");
-const bookBtn = document.getElementById("bookBtn");
-const releaseBtn = document.getElementById("releaseBtn");
-const holdTimerBox = document.getElementById("holdTimerBox");
-const holdTimerText = document.getElementById("holdTimerText");
-const holdProgressFill = document.getElementById("holdProgressFill");
-
+const state = {
+  events: [],
+  seatCache: {},
+  seats: [],
+  event: null,
+  selected: null,
+  user: USERS[0],
+  hold: null,
+  category: "all",
+  search: "",
+  busy: false,
+  view: "events",
+  tickets: [],
+  connection: false,
+};
+const app = document.getElementById("app");
 const userSelect = document.getElementById("userSelect");
-const botRunBtn = document.getElementById("botRunBtn");
-const botSentCount = document.getElementById("botSentCount");
-const botSuccessCount = document.getElementById("botSuccessCount");
-const botBlockedCount = document.getElementById("botBlockedCount");
-const botLog = document.getElementById("botLog");
+const dialog = document.getElementById("confirmationDialog");
+let stomp = null,
+  subscription = null,
+  routeSequence = 0;
+const money = (number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+    minimumFractionDigits: Number(number) % 1 ? 2 : 0,
+  }).format(number || 0);
+const day = (date) =>
+  new Date(date).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+const when = (date) =>
+  new Date(date).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "long",
+  });
+const hour = (date) =>
+  new Date(date).toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+const isRace = (e) => /formula|race|prix/i.test(e.name);
+const photo = (e) =>
+  isRace(e)
+    ? "/images/racing.jpg"
+    : /taylor|eras/i.test(e.name)
+      ? "/images/eras.jpg"
+      : "/images/concert.jpg";
+const shortName = (event) => event.name.split(":")[0].replace(/\s+\d{4}$/, "");
+const tour = (event) =>
+  event.name.split(":").slice(1).join(":").trim() || event.venueName;
+const city = (e) => (e.venueLocation || "").split(",")[0];
+const fromPrice = (e) =>
+  Math.min(...(state.seatCache[e.id] || []).map((s) => s.price));
+const selectedSeat = () => state.seats.find((s) => s.seatId === state.selected);
+const owns = (seat) =>
+  state.hold &&
+  state.hold.eventId === state.event?.id &&
+  state.hold.seatId === seat?.seatId &&
+  state.hold.userId === state.user.id;
 
-// Initialize application
-document.addEventListener("DOMContentLoaded", () => {
-  setupUserSelector();
-  initWebSocket();
-  loadEvents();
-  setupEventListeners();
-  setInterval(() => { if (currentEvent && !document.hidden) loadSeats(currentEvent.id); }, 5000);
-});
+async function api(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const err = new Error(
+      response.status === 429
+        ? "You’ve made several requests in a short time. Please wait a few seconds and try again."
+        : data.error || "We couldn’t complete that request. Please try again.",
+    );
+    err.status = response.status;
+    throw err;
+  }
+  return data;
+}
+function notify(message, error = false) {
+  const el = document.createElement("div");
+  el.className = "notification" + (error ? " error" : "");
+  el.textContent = message;
+  document.getElementById("notifications").append(el);
+  setTimeout(() => el.remove(), 5500);
+}
+function rememberHold() {
+  if (state.hold)
+    sessionStorage.setItem("tickit-hold", JSON.stringify(state.hold));
+  else sessionStorage.removeItem("tickit-hold");
+}
+function clearHold() {
+  state.hold = null;
+  rememberHold();
+}
+function routeTo(hash) {
+  if (location.hash === hash) route();
+  else location.hash = hash;
+}
+function setNav(view) {
+  document
+    .querySelectorAll("[data-nav]")
+    .forEach((el) => el.classList.toggle("active", el.dataset.nav === view));
+}
 
-function setupUserSelector() {
-  userSelect.innerHTML = USERS.map(u => 
-    `<option value="${u.id}">${u.name} (${u.email})</option>`
-  ).join("");
-
-  userSelect.addEventListener("change", (e) => {
-    if (currentHold) {
-      e.target.value = activeUser.id;
-      showToast("Release or confirm your current seat before switching users.", "warn");
+function renderDiscovery() {
+  state.view = "events";
+  setNav("events");
+  app.innerHTML = `<div class="wrap"><section class="hero"><div class="hero-copy"><div class="eyebrow">For the moments that matter</div><h1>Some nights<br><em>stay with you.</em></h1><p>The artists you love. The places you want to be.<br>Find your next live experience, and make it yours.</p><a class="hero-link" href="#discover">Explore what’s on ${icon("arrow")}</a></div><div class="hero-picture"><img src="/images/concert.jpg" alt="A crowd gathered under the lights at a live concert" fetchpriority="high"><span class="photo-credit">LIVE, IN THE MOMENT</span><div class="hero-photo-caption"><span>MORE THAN A TICKET</span><strong>A story you’ll tell for years.</strong></div></div></section><section class="discovery" id="discover"><div class="section-heading"><h2>Worth being there for.</h2><p>${state.events.length} handpicked experiences</p></div><div class="discovery-toolbar"><div class="filters" role="group" aria-label="Event category"><button class="filter ${state.category === "all" ? "active" : ""}" data-category="all">All experiences</button><button class="filter ${state.category === "music" ? "active" : ""}" data-category="music">${icon("music")} Music</button><button class="filter ${state.category === "race" ? "active" : ""}" data-category="race">${icon("flag")} Motorsport</button></div><label class="search-box">${icon("search")}<input id="eventSearch" type="search" placeholder="Artist, event or city" aria-label="Search events" value="${esc(state.search)}"></label></div><div class="events-grid" id="eventsGrid"></div></section><section class="editorial-note"><div><span class="note-number">LESS FRICTION. MORE ANTICIPATION.</span><h2 class="note-title">Your seat, with a little breathing room.</h2></div><p class="note-copy">Choose a seat and we’ll keep it for you for two minutes. Take a moment, check the details, and confirm when you’re ready.</p></section></div>`;
+  renderEvents();
+  document.getElementById("eventSearch").addEventListener("input", (event) => {
+    state.search = event.target.value;
+    renderEvents();
+  });
+}
+function renderEvents() {
+  const grid = document.getElementById("eventsGrid");
+  if (!grid) return;
+  const matches = state.events.filter(
+    (e) =>
+      (state.category === "all" ||
+        (state.category === "race" ? isRace(e) : !isRace(e))) &&
+      `${e.name} ${e.venueName} ${e.venueLocation}`
+        .toLowerCase()
+        .includes(state.search.toLowerCase()),
+  );
+  grid.innerHTML =
+    matches
+      .map(
+        (e) =>
+          `<article class="event-card"><a class="event-photo" href="#event/${e.id}" aria-label="Find tickets for ${esc(e.name)}" style="display:block"><img src="${photo(e)}" alt="${isRace(e) ? "Formula racing cars on a circuit" : "The atmosphere of a live music performance"}" loading="lazy"><span class="event-type">${isRace(e) ? "Motorsport" : "Live music"}</span><span class="event-date">${icon("calendar")}${esc(day(e.startTime))}</span></a><div class="event-copy"><div class="event-location">${icon("pin")}${esc(city(e))}</div><h3><a href="#event/${e.id}">${esc(shortName(e))}</a></h3><p class="event-subtitle">${esc(tour(e))} <span aria-hidden="true">·</span> ${esc(e.venueName)}</p><div class="event-card-bottom"><span class="price"><small>From</small>${Number.isFinite(fromPrice(e)) ? money(fromPrice(e)) : "—"}</span><a class="text-action" href="#event/${e.id}">Find tickets ${icon("arrow")}</a></div></div></article>`,
+      )
+      .join("") ||
+    '<div class="empty-state"><h2>Nothing here, just yet.</h2><p>Try another artist, city, or category.</p></div>';
+}
+function renderBooking() {
+  const e = state.event;
+  state.view = "booking";
+  setNav("events");
+  app.innerHTML = `<div class="wrap"><div class="page-top"><a class="back-link" href="#events">${icon("back")} Back to experiences</a><div class="flow-steps" aria-label="Booking progress"><span class="active"><b>1</b>Choose a seat</span><span class="${state.hold ? "active" : ""}"><b>2</b>Reserve & confirm</span><span><b>3</b>You’re going</span></div></div><section class="event-masthead"><img src="${photo(e)}" alt=""><div><div class="eyebrow">${isRace(e) ? "Motorsport" : "Live music"} / ${esc(city(e))}</div><h1>${esc(shortName(e))}: ${esc(tour(e))}</h1><div class="meta-line"><span>${icon("calendar")}${esc(when(e.startTime))} · ${esc(hour(e.startTime))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div></section><div class="booking-layout"><section><div class="map-panel"><div class="map-head"><div><h2>Find your place in the crowd.</h2><p>Select one available seat to get started.</p></div><span class="live-indicator"><i class="live-dot"></i><span id="availabilityCount"></span></span></div><div class="stage">${isRace(e) ? "TRACK / FINISH STRAIGHT" : "STAGE / FRONT OF HOUSE"}</div><div class="map-scroll" tabindex="0" role="region" aria-label="Seat map, scroll horizontally to see every seat"><div class="seat-rows" id="seatGrid"></div></div><div class="map-legend"><span><i class="swatch"></i>Available</span><span><i class="swatch chosen"></i>Your selection</span><span><i class="swatch reserved"></i>Reserved</span><span><i class="swatch unavailable"></i>Booked</span></div></div><p class="map-caption">Prices shown in USD. Your seat is held for two minutes while you confirm. Seat availability updates live.</p></section><aside class="checkout" id="checkout" aria-label="Reservation summary"></aside></div></div>`;
+  renderSeatMap();
+  renderCheckout();
+  subscribe();
+}
+function renderSeatMap() {
+  const grid = document.getElementById("seatGrid");
+  if (!grid) return;
+  const rows = {};
+  state.seats.forEach((s) => (rows[s.row] ??= []).push(s));
+  grid.innerHTML = Object.keys(rows)
+    .sort()
+    .map(
+      (row) =>
+        `<div class="seat-row"><span class="row-label">${esc(row)}</span><div class="row-seats">${rows[
+          row
+        ]
+          .sort((a, b) => a.number - b.number)
+          .map((s) => {
+            const owned = owns(s),
+              chosen = state.selected === s.seatId;
+            return `<button class="seat ${s.status.toLowerCase()} ${chosen ? "selected" : ""} ${owned ? "owned" : ""}" data-seat="${s.seatId}" data-status="${s.status}" aria-label="Row ${esc(s.row)}, seat ${s.number}, ${money(s.price)}, ${s.status.toLowerCase()}" aria-pressed="${chosen}" ${s.status === "BOOKED" || (s.status === "HELD" && !owned) ? "disabled" : ""}>${s.number}</button>`;
+          })
+          .join("")}</div><span class="row-label">${esc(row)}</span></div>`,
+    )
+    .join("");
+  document.getElementById("availabilityCount").textContent =
+    `${state.seats.filter((s) => s.status === "FREE").length} seats available`;
+}
+function renderCheckout() {
+  const box = document.getElementById("checkout");
+  if (!box) return;
+  const seat = selectedSeat(),
+    held = owns(seat);
+  document
+    .querySelectorAll(".flow-steps span")[1]
+    ?.classList.toggle("active", !!held);
+  if (!seat) {
+    box.innerHTML = `<h2>Your reservation</h2><div class="checkout-empty">${icon("ticket")}A great night starts with a seat.<br>Choose one on the map.</div><button class="primary-button" disabled>Select a seat to continue ${icon("arrow")}</button><p class="checkout-footnote">${icon("lock")}No payment is taken in this demo.</p>`;
+    return;
+  }
+  box.innerHTML = `<h2>Your reservation</h2>${held ? '<div class="hold-timer"><span>Seat reserved for you</span><strong id="holdCountdown"></strong></div>' : ""}<div class="selected-summary"><div><strong>Row ${esc(seat.row)}, Seat ${seat.number}</strong><small>Standard admission · 1 ticket</small></div><span class="section-tag">${esc(seat.label)}</span></div><div class="checkout-line"><span>Ticket price</span><span>${money(seat.price)}</span></div><div class="checkout-line"><span>Booking fee</span><span>${money(0)}</span></div><div class="checkout-line checkout-total"><span>Total <small>(USD)</small></span><strong>${money(seat.price)}</strong></div><button class="primary-button" id="${held ? "bookBtn" : "holdBtn"}" data-action="${held ? "book" : "hold"}" ${state.busy || seat.status === "BOOKED" ? "disabled" : ""}>${state.busy ? "Just a moment…" : held ? "Confirm reservation" : "Reserve this seat"} ${icon("arrow")}</button>${held ? '<button class="quiet-button" id="releaseBtn" data-action="release">Release this seat</button>' : ""}<p class="checkout-footnote">${icon("lock")}No payment is taken in this demo.</p><p class="checkout-user">Reserving as ${esc(state.user.name)}.<br>${held ? "Your hold expires automatically if you leave." : "You’ll have two minutes to confirm your seat."}</p>`;
+  updateCountdown();
+}
+async function refreshSeats() {
+  const eventId = state.event?.id;
+  if (!eventId || state.view !== "booking") return;
+  try {
+    const seats = await api(`/api/events/${eventId}/seats`);
+    if (state.event?.id !== eventId || state.view !== "booking") return;
+    state.seats = seats;
+    state.seatCache[eventId] = seats;
+    if (selectedSeat()?.status === "BOOKED" && !state.busy) {
+      state.selected = null;
+      if (state.hold?.eventId === eventId) clearHold();
+    }
+    renderSeatMap();
+    renderCheckout();
+  } catch {
+    /* Keep the current map during a transient outage. */
+  }
+}
+function updateCountdown() {
+  const el = document.getElementById("holdCountdown");
+  if (!state.hold) return;
+  const left = Math.max(
+    0,
+    Math.ceil((state.hold.deadline - Date.now()) / 1000),
+  );
+  if (el)
+    el.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  if (left === 0 && !state.busy) {
+    clearHold();
+    notify("Your hold has expired. You can choose an available seat again.");
+    refreshSeats();
+    renderCheckout();
+  }
+}
+async function acquire() {
+  const seat = selectedSeat();
+  if (!seat || state.busy) return;
+  state.busy = true;
+  renderCheckout();
+  try {
+    const data = await api("/api/holds", {
+      method: "POST",
+      headers: { "X-User-Id": String(state.user.id) },
+      body: JSON.stringify({
+        eventId: state.event.id,
+        seatId: seat.seatId,
+        userId: state.user.id,
+      }),
+    });
+    state.hold = {
+      eventId: state.event.id,
+      seatId: seat.seatId,
+      userId: state.user.id,
+      deadline: Date.now() + data.expiresInSeconds * 1000,
+    };
+    rememberHold();
+    seat.status = "HELD";
+    renderSeatMap();
+  } catch (err) {
+    notify(err.message, true);
+    await refreshSeats();
+  } finally {
+    state.busy = false;
+    renderCheckout();
+  }
+}
+async function release() {
+  if (!state.hold || state.busy) return;
+  const h = state.hold;
+  state.busy = true;
+  renderCheckout();
+  try {
+    await api(`/api/holds/${h.eventId}/${h.seatId}?userId=${h.userId}`, {
+      method: "DELETE",
+    });
+    clearHold();
+    notify("Your seat has been released.");
+  } catch (err) {
+    if (err.status === 409) clearHold();
+    notify(err.message, true);
+  } finally {
+    state.busy = false;
+    await refreshSeats();
+    renderCheckout();
+  }
+}
+async function book() {
+  if (!state.hold || state.busy) return;
+  const h = state.hold,
+    e = state.event,
+    seat = selectedSeat();
+  state.busy = true;
+  renderCheckout();
+  try {
+    const result = await api("/api/bookings", {
+      method: "POST",
+      headers: { "X-User-Id": String(state.user.id) },
+      body: JSON.stringify({
+        eventId: h.eventId,
+        seatId: h.seatId,
+        userId: h.userId,
+      }),
+    });
+    clearHold();
+    state.selected = null;
+    seat.status = "BOOKED";
+    showConfirmation(result, e, seat);
+  } catch (err) {
+    notify(err.message, true);
+    if (err.status === 410) clearHold();
+  } finally {
+    state.busy = false;
+    await refreshSeats();
+    renderCheckout();
+  }
+}
+function showConfirmation(result, event, seat) {
+  dialog.innerHTML = `<div class="confirmation-icon">${icon("check")}</div><div class="eyebrow">Reservation confirmed</div><h2>You’re going.</h2><p>A seat with your name on it. Your reservation details are saved in My tickets.</p><div class="confirmation-details"><h3>${esc(shortName(event))} · ${esc(tour(event))}</h3><p><span>Date</span><strong>${esc(day(event.startTime))}</strong></p><p><span>Your seat</span><strong>Row ${esc(seat.row)}, Seat ${seat.number}</strong></p><p><span>Reference</span><strong>TK-${String(result.bookingId).padStart(6, "0")}</strong></p></div><button class="primary-button" data-action="view-tickets">View my tickets ${icon("arrow")}</button><button class="quiet-button" data-action="close-confirmation">Continue exploring</button><p style="font-size:9px;text-align:center">Demo reservation. No payment has been taken.</p>`;
+  dialog.showModal();
+}
+async function renderTickets(sequence) {
+  state.view = "tickets";
+  setNav("tickets");
+  app.innerHTML =
+    '<div class="loading-state"><span class="loader"></span>Finding your tickets…</div>';
+  try {
+    const tickets = await api(`/api/bookings/user/${state.user.id}`);
+    if (sequence !== routeSequence) return;
+    app.innerHTML = `<div class="wrap"><div class="page-heading"><div class="eyebrow">Good things ahead</div><h1>Your next “I was there.”</h1><p>Reservations for ${esc(state.user.name)}. All the details, in one place.</p></div><div class="tickets-list">${
+      tickets.length
+        ? tickets
+            .slice()
+            .reverse()
+            .map((t) => {
+              const e = state.events.find((e) => e.id === t.eventId);
+              return e
+                ? `<article class="ticket-card"><img src="${photo(e)}" alt=""><div class="ticket-body"><div class="ticket-top"><span>TK-${String(t.bookingId).padStart(6, "0")}</span><b class="status-badge">CONFIRMED</b></div><h2>${esc(shortName(e))} · ${esc(tour(e))}</h2><div class="meta-line"><span>${icon("calendar")}${esc(day(e.startTime))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div><div class="ticket-stub"><span>YOUR SEAT</span><strong>${esc(t.seatLabel)}</strong><small>Demo reservation</small></div></article>`
+                : "";
+            })
+            .join("")
+        : `<div class="empty-state"><h2>Something to look forward to.</h2><p>Your confirmed reservations will appear here.</p><a class="hero-link" href="#events">Find your next experience ${icon("arrow")}</a></div>`
+    }</div></div>`;
+  } catch (err) {
+    renderError(err);
+  }
+}
+function renderAbout() {
+  state.view = "about";
+  setNav("about");
+  app.innerHTML = `<div class="wrap"><div class="page-heading"><div class="eyebrow">Behind the experience</div><h1>Built for the rush.</h1><p>TickIt is a working ticket-reservation MVP exploring a simple promise: one seat should belong to one person, even when everyone wants it.</p></div><section class="about-intro"><h2>A considered experience.<br>A dependable foundation.</h2><p>The interface keeps the booking flow straightforward. Underneath, Redis handles short-lived reservations, PostgreSQL enforces booking uniqueness, and live updates keep everyone looking at the same seat map.<br><br>This is a demonstration, with simulated accounts and no payments. The source, design, and tests are available on GitHub.</p></section><section class="principles"><article class="principle"><span>01 / TIME TO DECIDE</span><h3>A hold that gives you a moment.</h3><p>An atomic Redis operation reserves your seat for two minutes. If you change your mind, the hold expires automatically.</p></article><article class="principle"><span>02 / ONE SEAT, ONE BOOKING</span><h3>Consistency where it counts.</h3><p>A PostgreSQL uniqueness constraint resolves competing checkouts. Confirmation events are sent only after the transaction commits.</p></article><article class="principle"><span>03 / EVERYONE IN THE LOOP</span><h3>A seat map that keeps up.</h3><p>WebSocket updates reflect new reservations and bookings. Periodic reconciliation recovers missed messages.</p></article></section><div class="project-meta"><span>Java 21 · Spring Boot · PostgreSQL · Redis · WebSockets</span><a class="text-action" href="https://github.com/naman771/TickIt" target="_blank" rel="noopener">Explore the source ${icon("arrow")}</a></div><details class="lab-details"><summary>Developer demonstration <span>Rate limiting / 25-request burst</span></summary><p>Send a controlled burst of hold requests as demo user 3. The shared IP token bucket allows 20 requests and refills at 5 per second. Same-owner holds are idempotent. This reserves one free seat briefly; it does not book it. Use the automated concurrency suite for independent competing-user validation.</p><button class="primary-button" data-action="run-lab" id="labButton">Run rate-limit demonstration ${icon("arrow")}</button><pre class="lab-result" id="labResult" aria-live="polite"></pre></details></div>`;
+}
+function renderError(err) {
+  app.innerHTML = `<div class="wrap page-error"><h1>A brief intermission.</h1><p>${esc(err.message)}</p><button class="secondary-button" data-action="retry">Try again</button></div>`;
+}
+async function route() {
+  const sequence = ++routeSequence,
+    hash = location.hash || "#events";
+  if (hash === "#discover") {
+    if (state.view !== "events") renderDiscovery();
+    document.getElementById("discover")?.scrollIntoView({ behavior: "smooth" });
+    return;
+  }
+  const eventMatch = hash.match(/^#event\/(\d+)$/);
+  if (
+    state.hold &&
+    state.hold.deadline > Date.now() &&
+    (!eventMatch || Number(eventMatch[1]) !== state.hold.eventId)
+  ) {
+    notify(
+      "Please confirm or release your reserved seat before leaving checkout.",
+    );
+    location.hash = `#event/${state.hold.eventId}`;
+    return;
+  }
+  if (hash === "#tickets") {
+    await renderTickets(sequence);
+  } else if (hash === "#about") renderAbout();
+  else if (eventMatch) {
+    const id = Number(eventMatch[1]),
+      e = state.events.find((e) => e.id === id);
+    if (!e) {
+      renderError(new Error("This experience could not be found."));
       return;
     }
-    activeUser = USERS.find(u => u.id == e.target.value) || USERS[0];
-    showToast(`Switched active user to: ${activeUser.name}`, "success");
-  });
-}
-
-function setupEventListeners() {
-  holdBtn.addEventListener("click", handleAcquireHold);
-  releaseBtn.addEventListener("click", handleReleaseHold);
-  bookBtn.addEventListener("click", handleConfirmBooking);
-  botRunBtn.addEventListener("click", runBotSimulation);
-}
-
-// ── WebSocket Connection ─────────────────────────────────
-function initWebSocket() {
-  try {
-    const socket = new SockJS("/ws");
-    stompClient = Stomp.over(socket);
-    stompClient.debug = null; // quiet console logs
-
-    stompClient.connect({}, () => {
-      console.log("Connected to TickIt WebSocket");
-      if (currentEvent) {
-        subscribeToEvent(currentEvent.id);
-        loadSeats(currentEvent.id);
-      }
-    }, (err) => {
-      console.warn("WebSocket disconnected, retrying in 4s...", err);
-      setTimeout(initWebSocket, 4000);
-    });
-  } catch (e) {
-    console.error("WebSocket init error:", e);
-  }
-}
-
-function subscribeToEvent(eventId) {
-  if (!stompClient || !stompClient.connected) return;
-  if (currentSubscription) {
-    currentSubscription.unsubscribe();
-  }
-
-  currentSubscription = stompClient.subscribe(`/topic/seats/${eventId}`, (message) => {
-    const update = JSON.parse(message.body);
-    handleSeatUpdate(update);
-  });
-}
-
-function handleSeatUpdate(update) {
-  const seatIdx = currentSeats.findIndex(s => s.seatId === update.seatId);
-  if (seatIdx !== -1) {
-    currentSeats[seatIdx].status = update.status;
-  }
-
-  // Update DOM element
-  const seatEl = document.querySelector(`.seat[data-id="${update.seatId}"]`);
-  if (seatEl) {
-    seatEl.className = `seat ${update.status.toLowerCase()}`;
-    if (selectedSeat && selectedSeat.seatId === update.seatId && update.status !== "FREE") {
-      if (update.status === "BOOKED") {
-        if (currentHold && currentHold.seatId === update.seatId) clearHoldTimer();
-        selectedSeat = null;
-        updateCheckoutUI();
-      }
+    state.event = e;
+    state.selected = state.hold?.eventId === id ? state.hold.seatId : null;
+    app.innerHTML =
+      '<div class="loading-state"><span class="loader"></span>Getting the best view…</div>';
+    try {
+      const seats = await api(`/api/events/${id}/seats`);
+      if (sequence !== routeSequence) return;
+      state.seats = seats;
+      state.seatCache[id] = seats;
+      renderBooking();
+    } catch (err) {
+      renderError(err);
     }
-  }
-
-  updateAvailableBadge();
-  showToast(`Live update: Seat ${update.seatLabel} is now ${update.status}`, 
-    update.status === "BOOKED" ? "warn" : "success");
+  } else renderDiscovery();
+  window.scrollTo({ top: 0, behavior: "instant" });
 }
-
-// ── Load Events ──────────────────────────────────────────
-async function loadEvents() {
+function subscribe() {
+  if (subscription) {
+    subscription.unsubscribe();
+    subscription = null;
+  }
+  if (!stomp?.connected || state.view !== "booking" || !state.event) return;
+  subscription = stomp.subscribe(`/topic/seats/${state.event.id}`, () =>
+    refreshSeats(),
+  );
+}
+function connect() {
   try {
-    const res = await fetch("/api/events");
-    const events = await res.json();
-    renderEvents(events);
-    if (events.length > 0) {
-      selectEvent(events[0]);
-    }
-  } catch (err) {
-    console.error("Failed to fetch events:", err);
-    showToast("Failed to connect to backend API", "error");
-  }
-}
-
-function renderEvents(events) {
-  eventsContainer.innerHTML = events.map(evt => `
-    <div class="event-card ${currentEvent && currentEvent.id === evt.id ? 'active' : ''}" 
-         onclick="selectEventById(${evt.id})">
-      <div class="event-img-wrap">
-        <img class="event-img" src="${evt.imageUrl}" onerror="this.onerror=null;this.src='/images/concert.svg'" alt="${evt.name}">
-        <span class="event-chip">${evt.availableSeats} Seats Left</span>
-      </div>
-      <div class="event-body">
-        <h3 class="event-name">${evt.name}</h3>
-        <div class="event-meta">
-          <span class="event-meta-item">📍 ${evt.venueName}</span>
-          <span class="event-meta-item">📅 ${new Date(evt.startTime).toLocaleDateString()}</span>
-        </div>
-        <div class="event-stats">
-          <span>Choose your seat</span>
-          <span class="avail-count">${evt.availableSeats} / ${evt.totalSeats} remaining</span>
-        </div>
-      </div>
-    </div>
-  `).join("");
-}
-
-window.selectEventById = function(id) {
-  fetch(`/api/events/${id}`)
-    .then(r => r.json())
-    .then(evt => selectEvent(evt));
-};
-
-function selectEvent(event) {
-  if (currentHold && currentEvent && currentEvent.id === event.id) return;
-  if (currentHold && currentEvent && currentEvent.id !== event.id) {
-    showToast("Release or confirm your current seat before switching events.", "warn");
-    return;
-  }
-  currentEvent = event;
-  selectedSeat = null;
-  clearHoldTimer();
-  updateCheckoutUI();
-
-  currentEventName.textContent = event.name;
-  currentVenue.textContent = `📍 ${event.venueName}, ${event.venueLocation}`;
-
-  document.querySelectorAll(".event-card").forEach(el => {
-    el.classList.toggle("active", el.innerHTML.includes(event.name));
-  });
-
-  subscribeToEvent(event.id);
-  loadSeats(event.id);
-}
-
-// ── Load & Render Seats ──────────────────────────────────
-async function loadSeats(eventId) {
-  try {
-    const res = await fetch(`/api/events/${eventId}/seats`);
-    if (!res.ok || !currentEvent || currentEvent.id !== eventId) return;
-    currentSeats = await res.json();
-    if (selectedSeat) selectedSeat = currentSeats.find(s => s.seatId === selectedSeat.seatId) || null;
-    updateCheckoutUI();
-    renderSeats(currentSeats);
-  } catch (err) {
-    console.error("Failed to load seats:", err);
-  }
-}
-
-function renderSeats(seats) {
-  // Group by row
-  const rows = {};
-  seats.forEach(s => {
-    if (!rows[s.row]) rows[s.row] = [];
-    rows[s.row].push(s);
-  });
-
-  let html = "";
-  Object.keys(rows).sort().forEach(r => {
-    html += `
-      <div class="seat-row">
-        <span class="row-label">${r}</span>
-        <div class="row-seats">
-          ${rows[r].map(seat => `
-            <div class="seat ${seat.status.toLowerCase()} ${selectedSeat && selectedSeat.seatId === seat.seatId ? 'selected' : ''}" 
-                 data-id="${seat.seatId}"
-                 data-label="${seat.label}"
-                 data-price="${seat.price}"
-                 data-status="${seat.status}"
-                 onclick="onSeatClick(${seat.seatId})">
-              ${seat.number}
-            </div>
-          `).join("")}
-        </div>
-        <span class="row-label">${r}</span>
-      </div>
-    `;
-  });
-
-  seatGrid.innerHTML = html;
-  updateAvailableBadge();
-}
-
-function updateAvailableBadge() {
-  const freeCount = currentSeats.filter(s => s.status === "FREE").length;
-  availableBadge.textContent = `${freeCount} Seats Available`;
-}
-
-window.onSeatClick = function(seatId) {
-  const seat = currentSeats.find(s => s.seatId === seatId);
-  if (!seat) return;
-
-  if (seat.status === "BOOKED") {
-    showToast("This seat is already booked permanently.", "error");
-    return;
-  }
-
-  if (seat.status === "HELD" && (!currentHold || currentHold.seatId !== seatId)) {
-    showToast("This seat is currently held by someone. Wait or pick another.", "warn");
-    return;
-  }
-
-  if (currentHold && currentHold.seatId !== seatId) {
-    showToast("Release your current hold before selecting another seat.", "warn");
-    return;
-  }
-
-  if (currentHold && currentHold.seatId === seatId) { selectedSeat = seat; updateCheckoutUI(); return; }
-
-  // Toggle selection
-  if (selectedSeat && selectedSeat.seatId === seatId) {
-    selectedSeat = null;
-  } else {
-    selectedSeat = seat;
-  }
-
-  // Update selection style
-  document.querySelectorAll(".seat").forEach(el => {
-    const id = parseInt(el.getAttribute("data-id"));
-    if (selectedSeat && id === selectedSeat.seatId) {
-      el.classList.add("selected");
-    } else {
-      el.classList.remove("selected");
-    }
-  });
-
-  updateCheckoutUI();
-};
-
-function updateCheckoutUI() {
-  if (!selectedSeat) {
-    selectedSeatLabel.textContent = "None selected";
-    selectedSeatPrice.textContent = "$0.00";
-    holdBtn.disabled = true;
-    bookBtn.disabled = true;
-    releaseBtn.style.display = "none";
-    return;
-  }
-
-  selectedSeatLabel.textContent = `Row ${selectedSeat.row}, Seat ${selectedSeat.number} (${selectedSeat.label})`;
-  selectedSeatPrice.textContent = `$${parseFloat(selectedSeat.price).toFixed(2)}`;
-
-  if (currentHold && currentHold.seatId === selectedSeat.seatId) {
-    holdBtn.disabled = true;
-    bookBtn.disabled = false;
-    releaseBtn.style.display = "block";
-  } else {
-    holdBtn.disabled = (selectedSeat.status !== "FREE");
-    bookBtn.disabled = true;
-    releaseBtn.style.display = "none";
-  }
-}
-
-// ── Hold Flow ────────────────────────────────────────────
-async function handleAcquireHold() {
-  if (!selectedSeat || !currentEvent) return;
-
-  holdBtn.disabled = true;
-  holdBtn.innerHTML = "⏳ Holding...";
-
-  try {
-    const res = await fetch("/api/holds", {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "X-User-Id": activeUser.id.toString()
+    if (typeof SockJS === "undefined" || typeof Stomp === "undefined") return;
+    stomp = Stomp.over(new SockJS("/ws"));
+    stomp.debug = null;
+    stomp.connect(
+      {},
+      () => {
+        state.connection = true;
+        subscribe();
+        refreshSeats();
       },
-      body: JSON.stringify({
-        eventId: currentEvent.id,
-        seatId: selectedSeat.seatId,
-        userId: activeUser.id
-      })
-    });
-
-    const data = await res.json();
-
-    if (res.ok) {
-      showToast(`Hold acquired on Seat ${selectedSeat.label}! You have ${data.expiresInSeconds}s to checkout.`, "success");
-      startHoldTimer(selectedSeat.seatId, data.expiresInSeconds);
-      updateCheckoutUI();
-    } else if (res.status === 429) {
-      showToast("Rate limit exceeded! Slow down bot.", "error");
-    } else {
-      showToast(data.error || "Could not hold seat.", "error");
-    }
-  } catch (err) {
-    showToast("Network error holding seat", "error");
-  } finally {
-    holdBtn.innerHTML = "🔒 1. Hold Seat (120s)";
-  }
-}
-
-function startHoldTimer(seatId, totalSeconds) {
-  clearHoldTimer();
-
-  let remaining = totalSeconds;
-  holdTimerBox.classList.add("active");
-  holdTimerText.textContent = `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
-  holdProgressFill.style.width = "100%";
-  const deadline = Date.now() + totalSeconds * 1000;
-
-  const interval = setInterval(() => {
-    remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    const mins = Math.floor(remaining / 60);
-    const secs = remaining % 60;
-    holdTimerText.textContent = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-    holdProgressFill.style.width = `${(remaining / totalSeconds) * 100}%`;
-
-    if (remaining <= 0) {
-      clearHoldTimer();
-      showToast(`Hold expired on seat ${selectedSeat ? selectedSeat.label : ''}!`, "warn");
-      updateCheckoutUI();
-      loadSeats(currentEvent.id);
-    }
-  }, 1000);
-
-  currentHold = { seatId, timerInterval: interval };
-}
-
-function clearHoldTimer() {
-  if (currentHold && currentHold.timerInterval) {
-    clearInterval(currentHold.timerInterval);
-  }
-  currentHold = null;
-  holdTimerBox.classList.remove("active");
-}
-
-async function handleReleaseHold() {
-  if (!selectedSeat || !currentEvent) return;
-  try {
-    const res = await fetch(`/api/holds/${currentEvent.id}/${selectedSeat.seatId}?userId=${activeUser.id}`, {
-      method: "DELETE"
-    });
-    if (!res.ok) { showToast("Could not release this hold.", "error"); return; }
-    clearHoldTimer();
-    showToast("Hold released manually.", "success");
-    loadSeats(currentEvent.id);
-    updateCheckoutUI();
-  } catch (e) {
-    console.error("Error releasing hold:", e);
-  }
-}
-
-// ── Booking Flow ─────────────────────────────────────────
-async function handleConfirmBooking() {
-  if (!selectedSeat || !currentEvent) return;
-
-  bookBtn.disabled = true;
-  bookBtn.innerHTML = "💳 Processing...";
-
-  try {
-    const res = await fetch("/api/bookings", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-User-Id": activeUser.id.toString()
+      () => {
+        state.connection = false;
+        setTimeout(connect, 4000);
       },
-      body: JSON.stringify({
-        eventId: currentEvent.id,
-        seatId: selectedSeat.seatId,
-        userId: activeUser.id
-      })
-    });
-
-    const data = await res.json();
-
-    if (res.ok) {
-      clearHoldTimer();
-      showToast(`🎉 Success! Booking #${data.bookingId} confirmed for Seat ${data.seatLabel}!`, "success");
-      selectedSeat = null;
-      updateCheckoutUI();
-      loadSeats(currentEvent.id);
-    } else if (res.status === 429) {
-      showToast("Rate limit exceeded! Slow down bot.", "error");
-      bookBtn.disabled = false;
-    } else {
-      showToast(data.error || "Booking failed.", "error");
-      bookBtn.disabled = false;
-    }
-  } catch (err) {
-    showToast("Network error processing booking", "error");
-    bookBtn.disabled = false;
-  } finally {
-    bookBtn.innerHTML = "⚡ 2. Confirm Booking";
+    );
+  } catch {
+    setTimeout(connect, 4000);
   }
 }
-
-// ── Bot Attack / Rate Limiter Simulation ──────────────────
-async function runBotSimulation() {
-  if (!currentEvent || currentSeats.length === 0) return;
-
-  botRunBtn.disabled = true;
-  botRunBtn.innerHTML = "🚀 Attack in progress...";
-
-  let sent = 0;
-  let success = 0;
-  let blocked = 0;
-
-  botSentCount.textContent = "0";
-  botSuccessCount.textContent = "0";
-  botBlockedCount.textContent = "0";
-  botLog.innerHTML = "";
-
-  const targetSeat = currentSeats.find(s => s.status === "FREE") || currentSeats[0];
-  const totalRequests = 25; // Exceeds our 20 bucket capacity
-
-  logBotMsg(`Initiating high-velocity bot spike: ${totalRequests} requests against seat ${targetSeat.label}...`, "ok");
-
-  const requests = [];
-
-  for (let i = 1; i <= totalRequests; i++) {
-    const promise = (async (reqNum) => {
-      sent++;
-      botSentCount.textContent = sent;
-
-      try {
-        const res = await fetch("/api/holds", {
+async function runLab() {
+  const button = document.getElementById("labButton"),
+    result = document.getElementById("labResult");
+  if (!button || state.busy) return;
+  button.disabled = true;
+  result.textContent = "Preparing the demonstration…";
+  try {
+    const e = state.events[0],
+      seats = await api(`/api/events/${e.id}/seats`),
+      seat = seats.find((s) => s.status === "FREE");
+    if (!seat)
+      throw new Error("There are no free seats for this demonstration.");
+    const results = await Promise.all(
+      Array.from({ length: 25 }, () =>
+        fetch("/api/holds", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-User-Id": "3" // Abusive Flash Bot ID
-          },
+          headers: { "Content-Type": "application/json", "X-User-Id": "3" },
           body: JSON.stringify({
-            eventId: currentEvent.id,
-            seatId: targetSeat.seatId,
-            userId: 3
-          })
-        });
-
-        if (res.status === 200) {
-          success++;
-          botSuccessCount.textContent = success;
-          logBotMsg(`Req #${reqNum}: [200 OK] Hold acquired!`, "ok");
-        } else if (res.status === 429) {
-          blocked++;
-          botBlockedCount.textContent = blocked;
-          logBotMsg(`Req #${reqNum}: [429 BLOCKED] Redis Token-Bucket rate limit!`, "rate-limited");
-        } else if (res.status === 409) {
-          blocked++;
-          botBlockedCount.textContent = blocked;
-          logBotMsg(`Req #${reqNum}: [409 CONFLICT] Seat held by another thread!`, "conflict");
-        } else {
-          blocked++;
-          botBlockedCount.textContent = blocked;
-          logBotMsg(`Req #${reqNum}: [HTTP ${res.status}] Rejected`, "conflict");
-        }
-      } catch (err) {
-        blocked++;
-        botBlockedCount.textContent = blocked;
-        logBotMsg(`Req #${reqNum}: Connection dropped`, "conflict");
-      }
-    })(i);
-
-    requests.push(promise);
+            eventId: e.id,
+            seatId: seat.seatId,
+            userId: 3,
+          }),
+        }).then((r) => r.status),
+      ),
+    );
+    const counts = results.reduce(
+      (a, status) => ((a[status] = (a[status] || 0) + 1), a),
+      {},
+    );
+    result.textContent = `25 requests sent to seat ${seat.label}\n${Object.entries(
+      counts,
+    )
+      .map(([code, count]) => `HTTP ${code}  →  ${count} responses`)
+      .join(
+        "\n",
+      )}\n\nSame-user retries share one hold. The seat expires automatically.`;
+  } catch (err) {
+    result.textContent = err.message;
+  } finally {
+    button.disabled = false;
   }
-
-  await Promise.all(requests);
-
-  logBotMsg(`Hold burst complete. Repeated requests by the same user are idempotent; this demonstrates rate limiting.`, "ok");
-  botRunBtn.disabled = false;
-  botRunBtn.innerHTML = "🚀 Launch Bot Stress Test (25 Reqs/sec)";
-  loadSeats(currentEvent.id);
 }
-
-function logBotMsg(msg, type) {
-  const line = document.createElement("div");
-  line.className = `log-entry ${type}`;
-  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-  botLog.prepend(line);
+app.addEventListener("click", (event) => {
+  const category = event.target.closest("[data-category]");
+  if (category) {
+    state.category = category.dataset.category;
+    document
+      .querySelectorAll("[data-category]")
+      .forEach((b) =>
+        b.classList.toggle("active", b.dataset.category === state.category),
+      );
+    renderEvents();
+    return;
+  }
+  const button = event.target.closest("[data-seat]");
+  if (button && !button.disabled) {
+    if (state.hold && state.hold.seatId !== Number(button.dataset.seat)) {
+      notify("Release your current seat before choosing another.");
+      return;
+    }
+    state.selected = Number(button.dataset.seat);
+    renderSeatMap();
+    renderCheckout();
+    return;
+  }
+  const action = event.target.closest("[data-action]")?.dataset.action;
+  if (action === "hold") acquire();
+  if (action === "book") book();
+  if (action === "release") release();
+  if (action === "retry") state.events.length ? route() : start();
+  if (action === "run-lab") runLab();
+});
+dialog.addEventListener("click", (event) => {
+  const action = event.target.closest("[data-action]")?.dataset.action;
+  if (action === "view-tickets") {
+    dialog.close();
+    routeTo("#tickets");
+  }
+  if (action === "close-confirmation") {
+    dialog.close();
+    routeTo("#events");
+  }
+});
+userSelect.addEventListener("change", () => {
+  if (state.hold || state.busy) {
+    userSelect.value = state.user.id;
+    notify("Please confirm or release your seat before switching accounts.");
+    return;
+  }
+  state.user = USERS.find((u) => u.id === Number(userSelect.value)) || USERS[0];
+  sessionStorage.setItem("tickit-user", state.user.id);
+  if (state.view === "tickets") route();
+  else if (state.view === "booking") renderCheckout();
+});
+window.addEventListener("hashchange", route);
+async function start() {
+  try {
+    const savedUser = Number(sessionStorage.getItem("tickit-user"));
+    state.user = USERS.find((u) => u.id === savedUser) || USERS[0];
+    userSelect.value = state.user.id;
+    const saved = JSON.parse(sessionStorage.getItem("tickit-hold") || "null");
+    if (saved && saved.deadline > Date.now()) {
+      state.hold = saved;
+      state.user = USERS.find((u) => u.id === saved.userId) || USERS[0];
+      userSelect.value = state.user.id;
+    }
+    state.events = await api("/api/events");
+    await Promise.all(
+      state.events.map(async (e) => {
+        state.seatCache[e.id] = await api(`/api/events/${e.id}/seats`);
+      }),
+    );
+    await route();
+    connect();
+  } catch (err) {
+    renderError(err);
+  }
 }
-
-// ── Toasts ───────────────────────────────────────────────
-function showToast(message, type = "success") {
-  const container = document.getElementById("toastContainer");
-  const toast = document.createElement("div");
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-  container.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transform = "translateX(100%)";
-    toast.style.transition = "all 0.3s ease";
-    setTimeout(() => toast.remove(), 300);
-  }, 4000);
-}
+setInterval(updateCountdown, 1000);
+setInterval(() => {
+  if (!document.hidden) refreshSeats();
+}, 5000);
+start();

@@ -48,8 +48,8 @@ public class DataInitializer implements CommandLineRunner {
                 .build());
 
         AppUser botUser = userRepository.save(AppUser.builder()
-                .email("flashbot@loadtest.local")
-                .fullName("Flash Bot Runner")
+                .email("jordan@tickit.live")
+                .fullName("Jordan Lee")
                 .passwordHash("$2a$10$hashedPasswordBot999")
                 .build());
 
@@ -59,7 +59,7 @@ public class DataInitializer implements CommandLineRunner {
                 .description("Experience the visually stunning world tour live in an immersive real-time audio-visual spectacle.")
                 .startTime(LocalDateTime.now().plusDays(14).withHour(20).withMinute(0))
                 .endTime(LocalDateTime.now().plusDays(14).withHour(23).withMinute(30))
-                .imageUrl("/images/concert.svg")
+                .imageUrl("/images/concert.jpg")
                 .build();
         coldplay = eventRepository.save(coldplay);
 
@@ -97,7 +97,7 @@ public class DataInitializer implements CommandLineRunner {
                 .description("A journey through all musical eras of Taylor Swift with record-breaking ticket sales and live stadium magic.")
                 .startTime(LocalDateTime.now().plusDays(30).withHour(19).withMinute(0))
                 .endTime(LocalDateTime.now().plusDays(30).withHour(23).withMinute(0))
-                .imageUrl("/images/eras.svg")
+                .imageUrl("/images/eras.jpg")
                 .build();
         swift = eventRepository.save(swift);
 
@@ -127,7 +127,7 @@ public class DataInitializer implements CommandLineRunner {
                 .description("High-speed twilight racing under 1,600 floodlights on the challenging street circuit.")
                 .startTime(LocalDateTime.now().plusDays(45).withHour(20).withMinute(0))
                 .endTime(LocalDateTime.now().plusDays(45).withHour(22).withMinute(30))
-                .imageUrl("/images/racing.svg")
+                .imageUrl("/images/racing.jpg")
                 .build();
         f1 = eventRepository.save(f1);
 

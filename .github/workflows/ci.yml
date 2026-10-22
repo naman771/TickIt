@@ -36,6 +36,10 @@ jobs:
           java-version: '21'
           cache: maven
       - run: mvn -B verify
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check src/main/resources/static/js/app.js
       - run: bash -n scripts/concurrency_benchmark.sh
       - run: docker compose config --quiet
       - run: docker build -t tickit:ci .
