@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TickIt — Real-Time Concurrency-Safe Ticket Booking</title>
+  
+  <!-- Modern Google Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+  <!-- SockJS and STOMP for live WebSocket communications -->
+  <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="logo-group">
+      <div class="logo-icon">⚡</div>
+      <div>
+        <div class="logo-title">TickIt</div>
+      </div>
+      <span class="badge-pill">
+        <span class="pulse-dot"></span>
+        Live Concurrency & OCC Active
+      </span>
+    </div>
+
+    <div class="nav-actions">
+      <div class="user-selector-container">
+        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Simulated User:</span>
+        <select id="userSelect" class="user-select">
+          <!-- Populated by app.js -->
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-container">
+    
+    <!-- Top Events Showcase -->
+    <section>
+      <div class="section-header">
+        <div>
+          <h1 class="section-title">Trending Live Events</h1>
+          <p class="section-subtitle">Real-time seat reservations with Redis short-TTL holds and PostgreSQL OCC protection</p>
+        </div>
+      </div>
+      <div id="eventsContainer" class="events-grid">
+        <!-- Event cards rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- Main Booking Arena & Control Panels -->
+    <section class="interactive-section">
+      
+      <!-- Interactive Stadium / Arena Seat Map -->
+      <div class="arena-card">
+        <div class="card-title-bar">
+          <div>
+            <h2 id="currentEventName" class="card-title">Select an event</h2>
+            <p id="currentVenue" class="section-subtitle">Stadium Arena</p>
+          </div>
+          <span id="availableBadge" class="badge-pill">Updating seats...</span>
+        </div>
+
+        <!-- Stage Representation -->
+        <div class="stage-wrapper">
+          <div class="stage-curved"></div>
+          <div class="stage-label">MAIN PERFORMANCE STAGE / SCREEN</div>
+        </div>
+
+        <!-- Legend -->
+        <div class="seat-legend">
+          <div class="legend-item">
+            <span class="legend-swatch free"></span>
+            <span>Available (Free)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-swatch held"></span>
+            <span>Held (Redis 120s TTL)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-swatch booked"></span>
+            <span>Booked (PostgreSQL)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-swatch selected"></span>
+            <span>Selected</span>
+          </div>
+        </div>
+
+        <!-- Seat Grid -->
+        <div id="seatGrid" class="seat-grid-container">
+          <!-- Seats dynamically populated by app.js -->
+        </div>
+      </div>
+
+      <!-- Right Column: Checkout & Bot Rate-Limit Test Console -->
+      <aside class="side-panel">
+        
+        <!-- Booking & Hold Panel -->
+        <div class="sidebar-card">
+          <div class="card-title-bar">
+            <h3 class="card-title">Reservation Cart</h3>
+            <span style="font-size: 0.8rem; color: var(--accent-cyan); font-weight: 600;">OCC Guarded</span>
+          </div>
+
+          <!-- Hold Countdown Timer -->
+          <div id="holdTimerBox" class="hold-timer-container">
+            <div class="hold-timer-header">
+              <span>⏳ Seat Reserved in Redis</span>
+              <span id="holdTimerText">2:00</span>
+            </div>
+            <div class="hold-progress-bar">
+              <div id="holdProgressFill" class="hold-progress-fill"></div>
+            </div>
+          </div>
+
+          <!-- Selected Seat Summary -->
+          <div class="checkout-details">
+            <div class="detail-row">
+              <span>Selected Seat:</span>
+              <span id="selectedSeatLabel" class="detail-value">None selected</span>
+            </div>
+            <div class="detail-row">
+              <span>Base Price:</span>
+              <span id="selectedSeatPrice" class="detail-value">$0.00</span>
+            </div>
+            <div class="detail-row">
+              <span>Concurrency Lock:</span>
+              <span class="detail-value" style="color: var(--accent-emerald);">Active (SETNX)</span>
+            </div>
+            <div class="detail-row">
+              <span>Database Versioning:</span>
+              <span class="detail-value" style="color: var(--accent-cyan);">JPA @Version</span>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <button id="holdBtn" class="btn-primary" disabled>
+            🔒 1. Hold Seat (120s)
+          </button>
+          
+          <button id="bookBtn" class="btn-primary" style="background: linear-gradient(135deg, #00e676 0%, #00b0ff 100%); box-shadow: 0 4px 18px rgba(0, 230, 118, 0.35);" disabled>
+            ⚡ 2. Confirm Booking
+          </button>
+
+          <button id="releaseBtn" class="btn-secondary" style="display: none;">
+            Release Hold
+          </button>
+        </div>
+
+        <!-- Bot Attack & Rate Limiter Tester -->
+        <div class="sidebar-card bot-simulator">
+          <div class="card-title-bar">
+            <h3 class="card-title">🛡️ Bot & Flash Sale Shield</h3>
+            <span class="badge-pill" style="color: var(--accent-cyan); border-color: rgba(0, 242, 254, 0.4); background: rgba(0, 242, 254, 0.1);">
+              Token Bucket
+            </span>
+          </div>
+          <p class="bot-desc">
+            Simulate an aggressive bot firing 25 concurrent requests in 1 second. Redis Lua Token Bucket rejects bursts beyond quota with <strong>HTTP 429 Too Many Requests</strong> and PostgreSQL rejects double-booking with <strong>HTTP 409 Conflict</strong>.
+          </p>
+
+          <div class="bot-stats-grid">
+            <div class="bot-stat-box">
+              <div id="botSentCount" class="bot-stat-val sent">0</div>
+              <div class="bot-stat-lbl">Sent</div>
+            </div>
+            <div class="bot-stat-box">
+              <div id="botSuccessCount" class="bot-stat-val success">0</div>
+              <div class="bot-stat-lbl">200 OK</div>
+            </div>
+            <div class="bot-stat-box">
+              <div id="botBlockedCount" class="bot-stat-val blocked">0</div>
+              <div class="bot-stat-lbl">Blocked (429/409)</div>
+            </div>
+          </div>
+
+          <button id="botRunBtn" class="btn-danger">
+            🚀 Launch Bot Stress Test (25 Reqs/sec)
+          </button>
+
+          <div class="card-title-bar" style="margin-top: 0.2rem;">
+            <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700;">REAL-TIME GATEWAY LOG</span>
+          </div>
+          <div id="botLog" class="log-box">
+            <div class="log-entry ok">[READY] Rate limiter listening on /api/holds and /api/bookings</div>
+          </div>
+        </div>
+
+      </aside>
+
+    </section>
+
+  </main>
+
+  <!-- Notification Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
