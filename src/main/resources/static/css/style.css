@@ -717,3 +717,28 @@ body {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
+
+/* Keep narrow viewports usable; scroll the seat map rather than the whole page. */
+.interactive-section { grid-template-columns: minmax(0, 1fr) 380px; }
+.arena-card, .side-panel, .sidebar-card { min-width: 0; }
+.seat-grid-container { width: 100%; }
+.seat-row { flex-shrink: 0; }
+@media (max-width: 1100px) {
+  .interactive-section { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .navbar { padding: 1rem; flex-wrap: wrap; gap: 1rem; }
+  .nav-actions, .user-selector-container { width: 100%; min-width: 0; }
+  .user-select { width: 100%; min-width: 0; }
+  .app-container { padding: 1.25rem 1rem; }
+  .events-grid { grid-template-columns: minmax(0, 1fr); }
+  .arena-card, .sidebar-card { padding: 1rem; }
+  .card-title-bar { flex-wrap: wrap; gap: .75rem; }
+  .seat-legend { flex-wrap: wrap; gap: .75rem; }
+  .seat-grid-container { align-items: flex-start; }
+  .toast-container { left: 1rem; right: 1rem; bottom: 1rem; }
+  .toast { min-width: 0; max-width: 100%; }
+  .detail-row { gap: .75rem; }
+  .detail-value { text-align: right; }
+  .stage-label { font-size: .6rem; }
+}

@@ -43,6 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initWebSocket();
   loadEvents();
   setupEventListeners();
+  setInterval(() => { if (currentEvent && !document.hidden) loadSeats(currentEvent.id); }, 5000);
 });
 
 function setupUserSelector() {
@@ -51,6 +52,11 @@ function setupUserSelector() {
   ).join("");
 
   userSelect.addEventListener("change", (e) => {
+    if (currentHold) {
+      e.target.value = activeUser.id;
+      showToast("Release or confirm your current seat before switching users.", "warn");
+      return;
+    }
     activeUser = USERS.find(u => u.id == e.target.value) || USERS[0];
     showToast(`Switched active user to: ${activeUser.name}`, "success");
   });
@@ -74,6 +80,7 @@ function initWebSocket() {
       console.log("Connected to TickIt WebSocket");
       if (currentEvent) {
         subscribeToEvent(currentEvent.id);
+        loadSeats(currentEvent.id);
       }
     }, (err) => {
       console.warn("WebSocket disconnected, retrying in 4s...", err);
@@ -108,12 +115,14 @@ function handleSeatUpdate(update) {
     seatEl.className = `seat ${update.status.toLowerCase()}`;
     if (selectedSeat && selectedSeat.seatId === update.seatId && update.status !== "FREE") {
       if (update.status === "BOOKED") {
+        if (currentHold && currentHold.seatId === update.seatId) clearHoldTimer();
         selectedSeat = null;
         updateCheckoutUI();
       }
     }
   }
 
+  updateAvailableBadge();
   showToast(`Live update: Seat ${update.seatLabel} is now ${update.status}`, 
     update.status === "BOOKED" ? "warn" : "success");
 }
@@ -138,7 +147,7 @@ function renderEvents(events) {
     <div class="event-card ${currentEvent && currentEvent.id === evt.id ? 'active' : ''}" 
          onclick="selectEventById(${evt.id})">
       <div class="event-img-wrap">
-        <img class="event-img" src="${evt.imageUrl}" alt="${evt.name}">
+        <img class="event-img" src="${evt.imageUrl}" onerror="this.onerror=null;this.src='/images/concert.svg'" alt="${evt.name}">
         <span class="event-chip">${evt.availableSeats} Seats Left</span>
       </div>
       <div class="event-body">
@@ -148,8 +157,8 @@ function renderEvents(events) {
           <span class="event-meta-item">📅 ${new Date(evt.startTime).toLocaleDateString()}</span>
         </div>
         <div class="event-stats">
-          <span>Tickets from $${evt.totalSeats > 0 ? '120.00' : '0'}</span>
-          <span class="avail-count">${evt.availableSeats} / ${evt.totalSeats} free</span>
+          <span>Choose your seat</span>
+          <span class="avail-count">${evt.availableSeats} / ${evt.totalSeats} remaining</span>
         </div>
       </div>
     </div>
@@ -163,6 +172,11 @@ window.selectEventById = function(id) {
 };
 
 function selectEvent(event) {
+  if (currentHold && currentEvent && currentEvent.id === event.id) return;
+  if (currentHold && currentEvent && currentEvent.id !== event.id) {
+    showToast("Release or confirm your current seat before switching events.", "warn");
+    return;
+  }
   currentEvent = event;
   selectedSeat = null;
   clearHoldTimer();
@@ -183,7 +197,10 @@ function selectEvent(event) {
 async function loadSeats(eventId) {
   try {
     const res = await fetch(`/api/events/${eventId}/seats`);
+    if (!res.ok || !currentEvent || currentEvent.id !== eventId) return;
     currentSeats = await res.json();
+    if (selectedSeat) selectedSeat = currentSeats.find(s => s.seatId === selectedSeat.seatId) || null;
+    updateCheckoutUI();
     renderSeats(currentSeats);
   } catch (err) {
     console.error("Failed to load seats:", err);
@@ -242,6 +259,13 @@ window.onSeatClick = function(seatId) {
     showToast("This seat is currently held by someone. Wait or pick another.", "warn");
     return;
   }
+
+  if (currentHold && currentHold.seatId !== seatId) {
+    showToast("Release your current hold before selecting another seat.", "warn");
+    return;
+  }
+
+  if (currentHold && currentHold.seatId === seatId) { selectedSeat = seat; updateCheckoutUI(); return; }
 
   // Toggle selection
   if (selectedSeat && selectedSeat.seatId === seatId) {
@@ -311,8 +335,8 @@ async function handleAcquireHold() {
     const data = await res.json();
 
     if (res.ok) {
-      showToast(`Hold acquired on Seat ${selectedSeat.label}! You have 120s to checkout.`, "success");
-      startHoldTimer(selectedSeat.seatId, 120);
+      showToast(`Hold acquired on Seat ${selectedSeat.label}! You have ${data.expiresInSeconds}s to checkout.`, "success");
+      startHoldTimer(selectedSeat.seatId, data.expiresInSeconds);
       updateCheckoutUI();
     } else if (res.status === 429) {
       showToast("Rate limit exceeded! Slow down bot.", "error");
@@ -331,9 +355,12 @@ function startHoldTimer(seatId, totalSeconds) {
 
   let remaining = totalSeconds;
   holdTimerBox.classList.add("active");
+  holdTimerText.textContent = `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
+  holdProgressFill.style.width = "100%";
+  const deadline = Date.now() + totalSeconds * 1000;
 
   const interval = setInterval(() => {
-    remaining--;
+    remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
     const mins = Math.floor(remaining / 60);
     const secs = remaining % 60;
     holdTimerText.textContent = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
@@ -342,6 +369,7 @@ function startHoldTimer(seatId, totalSeconds) {
     if (remaining <= 0) {
       clearHoldTimer();
       showToast(`Hold expired on seat ${selectedSeat ? selectedSeat.label : ''}!`, "warn");
+      updateCheckoutUI();
       loadSeats(currentEvent.id);
     }
   }, 1000);
@@ -360,9 +388,10 @@ function clearHoldTimer() {
 async function handleReleaseHold() {
   if (!selectedSeat || !currentEvent) return;
   try {
-    await fetch(`/api/holds/${currentEvent.id}/${selectedSeat.seatId}?userId=${activeUser.id}`, {
+    const res = await fetch(`/api/holds/${currentEvent.id}/${selectedSeat.seatId}?userId=${activeUser.id}`, {
       method: "DELETE"
     });
+    if (!res.ok) { showToast("Could not release this hold.", "error"); return; }
     clearHoldTimer();
     showToast("Hold released manually.", "success");
     loadSeats(currentEvent.id);
@@ -487,7 +516,7 @@ async function runBotSimulation() {
 
   await Promise.all(requests);
 
-  logBotMsg(`Spike complete! Redis + OCC successfully protected the booking pipeline.`, "ok");
+  logBotMsg(`Hold burst complete. Repeated requests by the same user are idempotent; this demonstrates rate limiting.`, "ok");
   botRunBtn.disabled = false;
   botRunBtn.innerHTML = "🚀 Launch Bot Stress Test (25 Reqs/sec)";
   loadSeats(currentEvent.id);
@@ -505,7 +534,7 @@ function showToast(message, type = "success") {
   const container = document.getElementById("toastContainer");
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
-  toast.innerHTML = `<span>${type === 'error' ? '❌' : (type === 'warn' ? '⚠️' : '✅')}</span><span>${message}</span>`;
+  toast.textContent = message;
   container.appendChild(toast);
 
   setTimeout(() => {
