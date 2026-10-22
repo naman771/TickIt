@@ -1,0 +1,41 @@
+# All provisioned resources explicitly use free plans.
+# PostgreSQL is supplied by Neon Free; no expiring Render database is created.
+services:
+  - type: web
+    name: tickit
+    runtime: docker
+    plan: free
+    region: frankfurt
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SERVER_PORT
+        value: "10000"
+      - key: JAVA_TOOL_OPTIONS
+        value: "-Xmx256m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m -Xss512k"
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASS
+        sync: false
+      - key: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+        value: "3"
+      - key: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE
+        value: "0"
+      - key: SPRING_DATA_REDIS_URL
+        fromService:
+          type: keyvalue
+          name: tickit-cache
+          property: connectionString
+      - key: APP_AUTH_MODE
+        value: catalog
+      - key: APP_SEED_ENABLED
+        value: "false"
+      - key: EMAIL_ENABLED
+        value: "false"
+  - type: keyvalue
+    name: tickit-cache
+    plan: free
+    region: frankfurt
+    maxmemoryPolicy: noeviction
+    ipAllowList: []

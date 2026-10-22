@@ -13,6 +13,10 @@ The `.site` registry returned `tickit.site` as registered with `pending delete` 
 
 The application selects the developer frontend at the configured `DEVELOPER_HOST`. Locally, the same frontend is available at `/developer/`. Both custom domains can point at the same backend service while serving independent frontends. API requests stay on the calling frontend's origin.
 
+## Zero-budget deployment
+
+The current budget is strictly zero. Follow [Free deployment](FREE_DEPLOYMENT.md) for Render Free and Neon Free. Domain purchases, paid upgrades and live payment fees are not authorized. The services below describe future production options, not approval to provision paid resources.
+
 ## Recommended services
 
 | Purpose | Service | Account setup |
