@@ -33,6 +33,7 @@ public class BookingController {
     private final SeatRepository seatRepository;
     private final BookingRepository bookingRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final com.tickit.repository.UserRepository userRepository;
 
     /**
      * Step 1 of Booking flow: Acquire temporary short-TTL hold on a seat.
@@ -43,6 +44,13 @@ public class BookingController {
         Long eventId = request.getEventId();
         Long seatId = request.getSeatId();
         Long userId = request.getUserId();
+
+        Seat seat = seatRepository.findById(seatId)
+                .orElseThrow(() -> new IllegalArgumentException("Seat not found"));
+        if (!seat.getVenue().getEvent().getId().equals(eventId)) {
+            throw new IllegalArgumentException("Seat does not belong to this event");
+        }
+        if (!userRepository.existsById(userId)) throw new IllegalArgumentException("User not found");
 
         // 1. Check if already permanently booked in database
         if (bookingRepository.existsBySeatIdAndEventId(seatId, eventId)) {
@@ -59,7 +67,6 @@ public class BookingController {
         }
 
         // 3. Broadcast real-time hold update to all connected WebSocket clients
-        Seat seat = seatRepository.findById(seatId).orElse(null);
         String label = (seat != null) ? (seat.getSeatRow() + seat.getSeatNumber()) : String.valueOf(seatId);
 
         SeatStatusUpdate update = SeatStatusUpdate.builder()
@@ -76,8 +83,8 @@ public class BookingController {
                 "eventId", eventId,
                 "seatId", seatId,
                 "seatLabel", label,
-                "expiresInSeconds", 120,
-                "message", "Seat held successfully for 120 seconds. Complete booking before timer expires."
+                "expiresInSeconds", seatHoldService.remainingSeconds(eventId, seatId),
+                "message", "Seat held successfully. Complete booking before the hold expires."
         ));
     }
 
@@ -87,8 +94,10 @@ public class BookingController {
     @DeleteMapping("/holds/{eventId}/{seatId}")
     public ResponseEntity<?> releaseHold(@PathVariable Long eventId,
                                          @PathVariable Long seatId,
-                                         @RequestParam(required = false) Long userId) {
-        seatHoldService.releaseHold(eventId, seatId);
+                                         @RequestParam Long userId) {
+        if (!seatHoldService.releaseHold(eventId, seatId, userId)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "No hold owned by this user"));
+        }
 
         Seat seat = seatRepository.findById(seatId).orElse(null);
         String label = (seat != null) ? (seat.getSeatRow() + seat.getSeatNumber()) : String.valueOf(seatId);
@@ -97,7 +106,7 @@ public class BookingController {
                 .eventId(eventId)
                 .seatId(seatId)
                 .seatLabel(label)
-                .status("FREE")
+                .status(bookingRepository.existsBySeatIdAndEventId(seatId, eventId) ? "BOOKED" : "FREE")
                 .build();
         messagingTemplate.convertAndSend("/topic/seats/" + eventId, update);
 
@@ -105,7 +114,7 @@ public class BookingController {
     }
 
     /**
-     * Step 2 of Booking flow: Commit the booking with DB OCC and Redis verification.
+     * Step 2 of Booking flow: Commit the booking with database uniqueness and Redis verification.
      * Protected by Redis Token Bucket rate limiter.
      */
     @PostMapping("/bookings")

@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: ${TEST_DATABASE_URL:jdbc:postgresql://localhost:5432/tickit_test}
+    username: ${DB_USER:tickit}
+    password: ${DB_PASS:}
+  data:
+    redis:
+      database: 15
+  jpa:
+    open-in-view: true
+logging:
+  level:
+    com.tickit: WARN

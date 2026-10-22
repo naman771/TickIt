@@ -4,14 +4,14 @@
 -- KEYS[1] = rate-limit key (e.g. "rl:user:42" or "rl:ip:1.2.3.4")
 -- ARGV[1] = capacity  (max tokens)
 -- ARGV[2] = refill rate (tokens per second)
--- ARGV[3] = now  (Unix epoch millis)
 --
 -- Returns: 1 if allowed, 0 if rejected
 
 local key       = KEYS[1]
 local capacity  = tonumber(ARGV[1])
 local refill    = tonumber(ARGV[2])
-local now       = tonumber(ARGV[3])
+local clock     = redis.call('TIME')
+local now       = clock[1] * 1000 + math.floor(clock[2] / 1000)
 
 local data = redis.call('HMGET', key, 'tokens', 'last')
 local tokens = tonumber(data[1])

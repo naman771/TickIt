@@ -13,13 +13,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Core booking service. Orchestrates:
  *  1. Redis hold validation
- *  2. PostgreSQL insert with optimistic concurrency
- *  3. WebSocket broadcast
- *  4. Async email trigger
+ *  2. PostgreSQL insert protected by a unique constraint
+ *  3. Post-commit WebSocket broadcast
+ *  4. Post-commit async email trigger
  */
 @Service
 @RequiredArgsConstructor
@@ -45,7 +47,6 @@ public class BookingService {
 
         // 2. Check for existing booking (belt-and-suspenders with DB unique constraint)
         if (bookingRepo.existsBySeatIdAndEventId(seatId, eventId)) {
-            seatHoldService.releaseHold(eventId, seatId);
             throw new SeatAlreadyBookedException(
                     "Seat " + seatId + " is already booked for event " + eventId);
         }
@@ -58,7 +59,11 @@ public class BookingService {
         AppUser user = userRepo.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
-        // 4. Persist booking (OCC via @Version)
+        if (!seat.getVenue().getEvent().getId().equals(eventId)) {
+            throw new IllegalArgumentException("Seat does not belong to this event");
+        }
+
+        // The unique (seat_id, event_id) constraint arbitrates competing inserts.
         Booking booking = Booking.builder()
                 .seat(seat)
                 .event(event)
@@ -66,26 +71,25 @@ public class BookingService {
                 .bookedAt(LocalDateTime.now())
                 .status("CONFIRMED")
                 .build();
-        booking = bookingRepo.save(booking);
+        booking = bookingRepo.saveAndFlush(booking);
 
-        // 5. Release the Redis hold
-        seatHoldService.releaseHold(eventId, seatId);
-
-        // 6. Broadcast seat status via WebSocket
         String seatLabel = seat.getSeatRow() + seat.getSeatNumber();
+        Long bookingId = booking.getId();
         SeatStatusUpdate update = SeatStatusUpdate.builder()
-                .eventId(eventId)
-                .seatId(seatId)
-                .seatLabel(seatLabel)
-                .status("BOOKED")
-                .build();
-        messagingTemplate.convertAndSend("/topic/seats/" + eventId, update);
-        log.info("Booking confirmed: id={}, event={}, seat={}, user={}",
-                booking.getId(), eventId, seatId, userId);
-
-        // 7. Send confirmation email (async)
-        emailService.sendBookingConfirmation(user.getEmail(), user.getFullName(),
-                event.getName(), seatLabel, booking.getId());
+                .eventId(eventId).seatId(seatId).seatLabel(seatLabel).status("BOOKED").build();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                // A notification outage must never turn a committed booking into an HTTP failure.
+                try { seatHoldService.releaseHold(eventId, seatId, userId); }
+                catch (Exception ex) { log.warn("Hold release failed for booking {}", bookingId, ex); }
+                try { messagingTemplate.convertAndSend("/topic/seats/" + eventId, update); }
+                catch (Exception ex) { log.warn("Seat broadcast failed for booking {}", bookingId, ex); }
+                try { emailService.sendBookingConfirmation(user.getEmail(), user.getFullName(),
+                        event.getName(), seatLabel, bookingId); }
+                catch (Exception ex) { log.warn("Email dispatch failed for booking {}", bookingId, ex); }
+            }
+        });
 
         return BookingResponse.builder()
                 .bookingId(booking.getId())

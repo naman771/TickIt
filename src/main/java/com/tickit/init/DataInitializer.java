@@ -59,7 +59,7 @@ public class DataInitializer implements CommandLineRunner {
                 .description("Experience the visually stunning world tour live in an immersive real-time audio-visual spectacle.")
                 .startTime(LocalDateTime.now().plusDays(14).withHour(20).withMinute(0))
                 .endTime(LocalDateTime.now().plusDays(14).withHour(23).withMinute(30))
-                .imageUrl("https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200&auto=format&fit=crop&q=80")
+                .imageUrl("/images/concert.svg")
                 .build();
         coldplay = eventRepository.save(coldplay);
 
@@ -97,7 +97,7 @@ public class DataInitializer implements CommandLineRunner {
                 .description("A journey through all musical eras of Taylor Swift with record-breaking ticket sales and live stadium magic.")
                 .startTime(LocalDateTime.now().plusDays(30).withHour(19).withMinute(0))
                 .endTime(LocalDateTime.now().plusDays(30).withHour(23).withMinute(0))
-                .imageUrl("https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=1200&auto=format&fit=crop&q=80")
+                .imageUrl("/images/eras.svg")
                 .build();
         swift = eventRepository.save(swift);
 
@@ -127,7 +127,7 @@ public class DataInitializer implements CommandLineRunner {
                 .description("High-speed twilight racing under 1,600 floodlights on the challenging street circuit.")
                 .startTime(LocalDateTime.now().plusDays(45).withHour(20).withMinute(0))
                 .endTime(LocalDateTime.now().plusDays(45).withHour(22).withMinute(30))
-                .imageUrl("https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=1200&auto=format&fit=crop&q=80")
+                .imageUrl("/images/racing.svg")
                 .build();
         f1 = eventRepository.save(f1);
 

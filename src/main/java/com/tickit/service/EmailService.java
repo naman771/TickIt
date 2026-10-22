@@ -8,7 +8,6 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 
 /**
@@ -51,7 +50,7 @@ public class EmailService {
 
             mailSender.send(message);
             log.info("Confirmation email sent to {} for booking #{}", toEmail, bookingId);
-        } catch (MessagingException e) {
+        } catch (Exception e) {
             log.error("Failed to send confirmation email to {} for booking #{}", toEmail, bookingId, e);
             // In production: persist to a dead-letter table and retry
         }

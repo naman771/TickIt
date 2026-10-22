@@ -79,4 +79,17 @@ class BookingFlowIntegrationTest {
                 .andExpect(status().isGone())
                 .andExpect(jsonPath("$.error", containsString("No active hold")));
     }
+
+    @Test
+    void shouldRejectSeatFromAnotherEvent() throws Exception {
+        mockMvc.perform(post("/api/holds").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"eventId\":2,\"seatId\":1,\"userId\":1}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldRequireOwnerForRelease() throws Exception {
+        mockMvc.perform(delete("/api/holds/1/99999"))
+                .andExpect(status().isBadRequest());
+    }
 }

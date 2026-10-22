@@ -5,7 +5,7 @@ spring:
   # ── PostgreSQL ──────────────────────────────────────────
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:tickit}
-    username: ${DB_USER:naman}
+    username: ${DB_USER:tickit}
     password: ${DB_PASS:}
     driver-class-name: org.postgresql.Driver
 
@@ -15,7 +15,6 @@ spring:
     open-in-view: true
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
 
   # ── Flyway ──────────────────────────────────────────────
@@ -28,6 +27,8 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      repositories:
+        enabled: false
 
   # ── Email ───────────────────────────────────────────────
   mail:
@@ -49,7 +50,6 @@ app:
   rate-limit:
     capacity: 20                  # Max tokens per bucket
     refill-rate: 5                # Tokens added per second
-    window-seconds: 60            # Window for the bucket reset
   email:
     from: ${EMAIL_FROM:noreply@tickit.live}
     enabled: ${EMAIL_ENABLED:false}
@@ -59,12 +59,12 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info
 
 server:
   port: 8080
 
 logging:
   level:
-    com.tickit: DEBUG
-    org.springframework.web.socket: DEBUG
+    com.tickit: INFO
+    org.springframework.web.socket: WARN

@@ -45,13 +45,11 @@ public class RateLimiterService {
      * @return true if allowed, false if rate-limited
      */
     public boolean isAllowed(String bucketKey) {
-        long now = System.currentTimeMillis();
         Long result = redis.execute(
                 rateLimiterScript,
                 Collections.singletonList(bucketKey),
                 String.valueOf(capacity),
-                String.valueOf(refillRate),
-                String.valueOf(now)
+                String.valueOf(refillRate)
         );
         boolean allowed = result != null && result == 1L;
         if (!allowed) {

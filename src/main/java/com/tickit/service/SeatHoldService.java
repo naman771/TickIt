@@ -1,91 +1,56 @@
 package com.tickit.service;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
-import java.time.Duration;
-import java.util.Set;
-
-/**
- * Manages short-TTL seat holds in Redis to prevent two users
- * from booking the same seat simultaneously.
- */
+/** Atomic holds and an expiry index; the database remains authoritative for bookings. */
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class SeatHoldService {
-
     private final StringRedisTemplate redis;
-
+    private static final String INDEX = "hold:expiry";
+    private static final DefaultRedisScript<Long> ACQUIRE = script("acquire_hold.lua");
+    private static final DefaultRedisScript<Long> RELEASE = script("release_hold.lua");
     @Value("${app.seat-hold.ttl-seconds:120}")
     private int holdTtlSeconds;
 
-    private String holdKey(Long eventId, Long seatId) {
-        return "hold:" + eventId + ":" + seatId;
+    private static DefaultRedisScript<Long> script(String name) {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("scripts/" + name));
+        script.setResultType(Long.class);
+        return script;
     }
-
-    /**
-     * Try to acquire a hold on a seat for a given user.
-     * @return true if the hold was successfully acquired
-     */
+    private String holdKey(Long eventId, Long seatId) { return "hold:" + eventId + ":" + seatId; }
     public boolean acquireHold(Long eventId, Long seatId, Long userId) {
-        String key = holdKey(eventId, seatId);
-        Boolean acquired = redis.opsForValue()
-                .setIfAbsent(key, userId.toString(), Duration.ofSeconds(holdTtlSeconds));
-        if (Boolean.TRUE.equals(acquired)) {
-            log.info("Hold acquired: event={}, seat={}, user={}", eventId, seatId, userId);
-            return true;
-        }
-        // Check if the same user already holds it (idempotent)
-        String existing = redis.opsForValue().get(key);
-        if (userId.toString().equals(existing)) {
-            log.info("Hold already owned by same user: event={}, seat={}, user={}", eventId, seatId, userId);
-            return true;
-        }
-        log.info("Hold denied (held by another): event={}, seat={}, user={}", eventId, seatId, userId);
-        return false;
+        return Long.valueOf(1).equals(redis.execute(ACQUIRE,
+                List.of(holdKey(eventId, seatId), INDEX), userId.toString(), String.valueOf(holdTtlSeconds)));
     }
-
-    /**
-     * Check if a valid hold exists for this user+seat.
-     */
     public boolean isHoldValid(Long eventId, Long seatId, Long userId) {
-        String key = holdKey(eventId, seatId);
-        String holder = redis.opsForValue().get(key);
-        return userId.toString().equals(holder);
+        return userId.toString().equals(redis.opsForValue().get(holdKey(eventId, seatId)));
     }
-
-    /**
-     * Release a hold (after successful booking or cancellation).
-     */
-    public void releaseHold(Long eventId, Long seatId) {
-        String key = holdKey(eventId, seatId);
-        redis.delete(key);
-        log.info("Hold released: event={}, seat={}", eventId, seatId);
+    /** Internal administrative cleanup, also used by isolated test fixtures. */
+    public void releaseHold(Long eventId, Long seatId) { release(eventId, seatId, "*"); }
+    public boolean releaseHold(Long eventId, Long seatId, Long userId) {
+        return release(eventId, seatId, userId.toString());
     }
-
-    /**
-     * Check whether a seat is currently held by anyone.
-     */
+    private boolean release(Long eventId, Long seatId, String owner) {
+        return Long.valueOf(1).equals(redis.execute(RELEASE, List.of(holdKey(eventId, seatId), INDEX), owner));
+    }
     public boolean isSeatHeld(Long eventId, Long seatId) {
         return Boolean.TRUE.equals(redis.hasKey(holdKey(eventId, seatId)));
     }
-
-    /**
-     * Get the userId currently holding a seat (or null).
-     */
-    public Long getHoldingUser(Long eventId, Long seatId) {
-        String val = redis.opsForValue().get(holdKey(eventId, seatId));
-        return val != null ? Long.parseLong(val) : null;
+    public long remainingSeconds(Long eventId, Long seatId) {
+        Long ttl = redis.getExpire(holdKey(eventId, seatId), TimeUnit.MILLISECONDS);
+        return ttl == null ? 0 : Math.max(0, (ttl + 999) / 1000);
     }
-
-    /**
-     * Find all hold keys for a given event (for cleanup/monitoring).
-     */
-    public Set<String> findHoldKeys(Long eventId) {
-        return redis.keys("hold:" + eventId + ":*");
+    public Long getHoldingUser(Long eventId, Long seatId) {
+        String value = redis.opsForValue().get(holdKey(eventId, seatId));
+        return value == null ? null : Long.valueOf(value);
     }
 }

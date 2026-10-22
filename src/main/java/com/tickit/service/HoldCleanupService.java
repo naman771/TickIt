@@ -1,33 +1,47 @@
 package com.tickit.service;
 
 import com.tickit.dto.SeatStatusUpdate;
+import com.tickit.repository.BookingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import java.util.List;
 
-/**
- * Periodic background job that detects seats whose Redis holds
- * have expired and broadcasts "FREE" status updates via WebSocket.
- *
- * Redis auto-deletes expired keys, but connected clients need to
- * know the seat is available again, so we scan and notify.
- */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class HoldCleanupService {
-
-    private final SeatHoldService seatHoldService;
+    private final StringRedisTemplate redis;
+    private final BookingRepository bookingRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final SeatHoldService holds;
 
-    // In a production system you'd track held seats in a secondary
-    // Redis set to avoid KEYS scans. For the MVP this is acceptable.
-    @Scheduled(fixedDelayString = "${app.seat-hold.cleanup-interval:30000}")
-    public void logCleanupHeartbeat() {
-        log.debug("Hold cleanup heartbeat – Redis TTL handles expiry automatically");
-        // The primary mechanism is Redis TTL; this job exists so we can
-        // add proactive WebSocket notifications in a future iteration.
+    @Scheduled(fixedDelayString = "${app.seat-hold.cleanup-interval:1000}")
+    @SuppressWarnings("unchecked")
+    public void releaseExpiredHolds() {
+        DefaultRedisScript<List> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("scripts/expired_holds.lua"));
+        script.setResultType(List.class);
+        try {
+            List<String> expired = redis.execute(script, List.of("hold:expiry"));
+            if (expired == null) return;
+            for (String key : expired) {
+                String[] parts = key.split(":");
+                Long eventId = Long.valueOf(parts[1]);
+                Long seatId = Long.valueOf(parts[2]);
+                if (holds.isSeatHeld(eventId, seatId)) continue;
+                String status = bookingRepository.existsBySeatIdAndEventId(seatId, eventId) ? "BOOKED" : "FREE";
+                messagingTemplate.convertAndSend("/topic/seats/" + eventId,
+                        SeatStatusUpdate.builder().eventId(eventId).seatId(seatId)
+                                .seatLabel(String.valueOf(seatId)).status(status).build());
+            }
+        } catch (Exception ex) {
+            log.warn("Hold expiration notification failed; clients reconcile via seat API", ex);
+        }
     }
 }
