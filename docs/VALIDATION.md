@@ -21,7 +21,7 @@ BUILD SUCCESS
 | AccountSecurityTest | 16 | Protected APIs, spoofed identities, account isolation, developer authorization, separate host routing, safe provisioning and no unpaid checkout |
 | SessionTokenValidationTest | 6 | Actual RSA signatures, issuer, expiry, allowed origin and pending-session rejection |
 
-Authorization tests inject authenticated principals locally to test account boundaries. Cryptographic tests sign real JWTs with a generated RSA key and verify/reject them through Nimbus. Live Clerk/Google OAuth has not been exercised because provider accounts and credentials have not been supplied.
+Authorization tests inject authenticated principals locally to test account boundaries. Cryptographic tests sign real JWTs with a generated RSA key and verify/reject them through Nimbus. The supplied Clerk development credentials were authenticated against the Backend API and matched to the public signing keys. The real sign-in UI loads and offers Google plus email/password. Interactive account signup and developer authorization still require the account owner to complete sign-in.
 
 ## Website validation
 

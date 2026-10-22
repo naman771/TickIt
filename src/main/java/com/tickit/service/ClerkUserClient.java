@@ -21,6 +21,8 @@ public class ClerkUserClient {
         factory.setConnectTimeout(Duration.ofSeconds(3));
         factory.setReadTimeout(Duration.ofSeconds(5));
         this.client = RestClient.builder().baseUrl("https://api.clerk.com/v1")
+                .defaultHeader("User-Agent", "TickIt/1.0")
+                .defaultHeader("Accept", "application/json")
                 .requestFactory(factory).build();
     }
 
