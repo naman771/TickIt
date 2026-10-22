@@ -28,3 +28,9 @@ Thumbs.db
 # Logs & temp
 *.log
 scratch/
+
+# Local credentials
+.env
+.env.*
+!.env.example
+*.pid

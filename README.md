@@ -1,258 +1,182 @@
-# ⚡ TickIt — High-Throughput Real-Time Ticket Reservation Engine
+<div align="center">
 
-[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-brightgreen.svg)](https://spring.io/projects/spring-boot)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-7%2F8-red.svg)](https://redis.io/)
-[![Build Status](https://img.shields.io/badge/Tests-11%20Passed%20%2F%200%20Failed-success.svg)]()
+# TickIt
 
-> **TickIt** is a high-concurrency ticket booking system engineered to eliminate double-booking during high-traffic flash sales, defend the booking pipeline against abusive automated bot spikes, and broadcast live seat availability across connected clients in real time.
+### One seat. One booking. Live updates for everyone.
 
----
+A real-time ticket booking MVP built with **Java 21**, **Spring Boot**, **PostgreSQL**, and **Redis**.
 
-## 📑 Table of Contents
-1. [Core Architectural Mechanisms](#-core-architectural-mechanisms)
-2. [System Architecture & Data Flow](#-system-architecture--data-flow)
-3. [Backend Testing & Concurrency Verification](#-backend-testing--concurrency-verification)
-4. [Live Flash-Sale Benchmark CLI](#-live-flash-sale-benchmark-cli)
-5. [REST API Specifications](#-rest-api-specifications)
-6. [Getting Started](#-getting-started)
-7. [Tech Stack](#-tech-stack)
+[![Build and test](https://github.com/naman771/TickIt/actions/workflows/ci.yml/badge.svg)](https://github.com/naman771/TickIt/actions/workflows/ci.yml)
+![Java 21](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.2.5-6DB33F?logo=springboot&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)
 
----
+[Quick start](#quick-start) · [Architecture](#architecture) · [API reference](docs/API.md) · [Demo guide](docs/DEMO.md)
 
-## 🛡️ Core Architectural Mechanisms
+</div>
 
-### 1. Two-Tier Concurrency Control (Zero Double-Booking)
-To eliminate duplicate seat bookings during extreme flash-sale traffic spikes, TickIt employs a complementary two-tier concurrency strategy:
-* **Tier 1 (Fast Distributed Lock - Redis `SETNX`)**: When a user selects a seat, TickIt attempts to acquire an atomic distributed hold in Redis using `SETNX` with a 120-second TTL:
-  ```text
-  KEY: hold:{eventId}:{seatId} -> VALUE: {userId} (TTL: 120s)
-  ```
-  If another user or thread tries to claim the same seat, Redis atomically rejects the request with `HTTP 409 Conflict`. If the user abandons checkout, the hold automatically expires after 120 seconds, returning the seat to the public pool without database overhead.
-* **Tier 2 (Source of Truth - PostgreSQL Optimistic Concurrency Control)**: The database enforces absolute integrity using JPA `@Version` column and a hard relational constraint:
-  ```sql
-  UNIQUE (seat_id, event_id)
-  ```
-  Even if the distributed lock layer were to experience network partition or failover, PostgreSQL's MVCC and OCC guarantee that exactly **one** booking transaction can commit; any competing transaction fails immediately and rolls back.
+![TickIt booking interface](docs/images/tickit-desktop.png)
 
-### 2. Bot-Resistant Token-Bucket Rate Limiter (Redis Lua)
-To protect checkout endpoints from high-velocity bot attacks, TickIt executes an atomic token-bucket script in Redis before request processing:
-* Evaluated per IP (`rl:ip:{address}`) and per User (`rl:user:{id}`).
-* Configured with a burst capacity of 20 tokens and continuous refill (5 tokens/sec).
-* Evaluated atomically in single-threaded Redis via [`rate_limiter.lua`](src/main/resources/scripts/rate_limiter.lua).
-* Requests exceeding the bucket limit are immediately rejected with **`HTTP 429 Too Many Requests`** and include a `Retry-After: 10` header, shielding downstream database connection pools.
+TickIt models the hardest part of a flash sale: multiple people trying to book the same seat. Redis gives each seat a short-lived hold, PostgreSQL enforces one confirmed booking per seat and event, and WebSockets keep connected seat maps current.
 
-### 3. Real-Time Push Over WebSocket (STOMP)
-Instead of forcing clients to poll continuously, TickIt maintains bi-directional WebSocket connections over STOMP:
-* Clients subscribe to `/topic/seats/{eventId}`.
-* Status transitions (`FREE` ➔ `HELD` ➔ `BOOKED`) are broadcast instantly when holds or bookings occur.
+## What you can demonstrate
 
----
+- Browse three seeded events with 132 seats and a responsive interactive seat map.
+- Hold a seat for 120 seconds, release it, or confirm a booking.
+- Watch `HELD`, `FREE`, and `BOOKED` changes in another browser window.
+- Observe HTTP `429` responses when a burst exhausts a Redis token bucket.
+- Run a 50-thread contention test that asserts exactly one successful booking.
+- Verify rollback safety and database uniqueness independently of Redis.
 
-## 🏗️ System Architecture & Data Flow
+**MVP scope:** the user picker simulates three users. Authentication, payments, and production deployment are future work. Email is optional and disabled by default.
 
-```text
-                             ┌──────────────────────┐
-                             │    Client Browser    │
-                             │ (REST + STOMP / WS)  │
-                             └──────────┬───────────┘
-                                        │
-                        1. POST /holds  │     ▲ 5. STOMP Broadcast
-                        2. POST /books  │     │    (/topic/seats/{id})
-                                        ▼     │
-                             ┌──────────────────────┐
-                             │  Spring Boot Server  │
-                             │ RateLimiterFilter    │
-                             └──────────┬───────────┘
-                                        │
-                      1. Check Tokens   ▼   2. Acquire Hold
-                         ┌───────────────────────────────┐
-                         │          Redis v7/v8          │
-                         │  - Token Bucket (Lua script)  │
-                         │  - Hold Keys (120s TTL)       │
-                         └──────────────┬────────────────┘
-                                        │
-                                        ▼ 3. Commit Booking
-                         ┌───────────────────────────────┐
-                         │       PostgreSQL 16/18        │
-                         │  - JPA @Version (OCC)         │
-                         │  - UNIQUE (seat_id, event_id) │
-                         └───────────────────────────────┘
-```
+## Quick start
 
----
+### Docker Compose
 
-## 🧪 Backend Testing & Concurrency Verification
+Install Docker with Compose, then run:
 
-TickIt includes an automated testing suite validating concurrency invariants, rate limiting, and end-to-end API flows.
-
-### Running the Test Suite
 ```bash
-mvn test
+git clone git@github.com:naman771/TickIt.git
+cd TickIt
+docker compose up --build -d
 ```
 
-### Key Test Coverage
+Open **[localhost:8080](http://localhost:8080)**. The first build downloads Maven dependencies; Compose waits for PostgreSQL and Redis health checks before starting the application. Flyway creates the schema, then the application seeds demonstration data into an empty database.
 
-#### 1. Multithreaded Concurrency Stress Test (`BookingConcurrencyTest.java`)
-Launches **50 concurrent threads** aligned via `CountDownLatch` that all fire simultaneously at the exact same millisecond against a single contested seat.
-* **Test Invariants Verified**:
-  * **Invariant 1**: Exactly 1 thread successfully acquires the hold and confirms the booking.
-  * **Invariant 2**: All other 49 threads receive conflict rejections.
-  * **Invariant 3 (Database Integrity)**: Database verification query asserts that `COUNT(*)` in the `booking` table for that seat equals **exactly 1**.
-
-```text
-==================================================
-CONCURRENCY TEST RESULTS:
-Total Competing Threads: 50
-Successful Bookings:     1
-Rejected Attempts:       49
-==================================================
-[INFO] Tests run: 1, Failures: 0, Errors: 0, Time elapsed: 0.183 s -- in com.tickit.BookingConcurrencyTest
+```bash
+docker compose logs -f app
+docker compose down
 ```
 
-#### 2. Token-Bucket Rate Limiter Tests (`RateLimiterServiceTest.java`)
-* Verifies 20 burst requests are accepted within quota.
-* Verifies the 21st request receives `HTTP 429 Too Many Requests`.
-* Verifies token bucket refills based on elapsed time.
+If local services already use the default ports:
 
-#### 3. Seat Hold Lifecycle Tests (`SeatHoldServiceTest.java`)
-* Verifies atomic acquisition by the first user and rejection of competing users.
-* Verifies idempotent behavior for re-entrant requests from the same user.
-* Verifies release mechanism restores seat availability.
+```bash
+APP_PORT=8081 POSTGRES_PORT=5433 REDIS_PORT=6380 docker compose up --build -d
+```
 
-#### 4. REST API Integration Tests (`BookingFlowIntegrationTest.java`)
-* MockMvc validation of event listings, seat status queries, and conflict exception handling (`409 Conflict`, `410 Gone`).
+Database data persists in Compose volumes. `docker compose down` keeps those volumes. To deliberately reset the disposable demo data, use `docker compose down -v` before starting again.
 
----
+### Local Java development
 
-## ⚡ Live Flash-Sale Benchmark CLI
+Prerequisites: JDK 21, Maven 3.9+, PostgreSQL, and Redis. The Compose configuration uses PostgreSQL 16 and Redis 7; the local validation environment used PostgreSQL 18.
 
-A standalone bash benchmark script is included to simulate real-world traffic spikes against the running backend:
+```bash
+createdb tickit
+export DB_USER="$(whoami)"
+# Set DB_PASS if your PostgreSQL installation requires a password.
+mvn spring-boot:run
+```
+
+Redis must be listening on `localhost:6379`. Override the connection settings below when needed.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Browser[Browser / demo client] --> API[Spring MVC API]
+    API --> Limit[Redis Lua token bucket]
+    API --> Holds[Redis seat holds · 120s TTL]
+    API --> DB[(PostgreSQL)]
+    DB --> Constraint[UNIQUE seat_id + event_id]
+    API --> Commit[After transaction commit]
+    Commit --> WS[STOMP /topic/seats/eventId]
+    WS --> Browser
+    Commit --> Email[Optional async email]
+    Expiry[Expiry index worker] --> Holds
+    Expiry --> WS
+```
+
+1. A write request passes a per-IP token bucket: **20 tokens**, refilling at **5 tokens/second**. An optional `X-User-Id` header adds a demo user bucket; it is not authentication. The application uses the socket peer IP and does not trust arbitrary forwarded-IP headers.
+2. A Redis Lua script atomically acquires a hold and records its deadline in a sorted set. The same owner can retry without extending the original TTL. Competing owners receive `409`.
+3. Checkout validates the hold, user, and seat/event relationship. PostgreSQL's `UNIQUE (seat_id, event_id)` constraint arbitrates concurrent inserts. `@Version` supports optimistic locking for updates to an existing booking; it does **not** replace the uniqueness constraint.
+4. Only after the database transaction commits does the service release the owner's hold, broadcast `BOOKED`, and dispatch the optional email. Notification failures are logged and do not turn a committed booking into a failed HTTP response.
+5. An expiry worker checks a bounded batch from the sorted-set index every second and broadcasts expired seats. Browsers also reconcile against the seat API every five seconds and after reconnecting to recover missed messages.
+
+## API at a glance
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/events` | List events |
+| GET | `/api/events/{id}` | Event details |
+| GET | `/api/events/{id}/seats` | Current seat map |
+| POST | `/api/holds` | Acquire or retry a hold |
+| DELETE | `/api/holds/{eventId}/{seatId}?userId=1` | Release the specified owner's hold |
+| POST | `/api/bookings` | Confirm an existing hold |
+| GET | `/api/bookings/user/{userId}` | Demo booking history |
+| GET | `/actuator/health` | Application health |
+
+Hold and booking bodies use `{"eventId":1,"seatId":3,"userId":1}`. See the [API reference](docs/API.md) for a complete example and status codes.
+
+## Tests and concurrency demonstration
+
+Tests use a separate PostgreSQL database and **Redis logical database 15**. Use a disposable Redis instance for tests, rather than one hosting unrelated workloads in that database.
+
+```bash
+createdb tickit_test
+export DB_USER="$(whoami)"
+mvn verify
+mvn test -Dtest=BookingConcurrencyTest
+```
+
+`TEST_DATABASE_URL` overrides the test database connection. CI provisions PostgreSQL and Redis service containers, runs the suite, validates the Compose file, and builds the Docker image.
+
+The verified suite contains **18 tests**, including Redis hold ownership, token refill, REST validation, transaction rollback, notification failure, hold expiration, and direct competing database inserts. The 50-thread test checks **1 success, 49 rejected attempts, and exactly 1 database row**. See [validation details](docs/VALIDATION.md).
+
+With the app running, demonstrate HTTP contention:
 
 ```bash
 ./scripts/concurrency_benchmark.sh http://localhost:8080 1 50
 ```
 
-### Benchmark Output:
+This script uses the three real seeded users, discovers the actual hold owner, confirms that owner's booking, and checks the final seat state. Multiple `200` responses can belong to the **same** owner because retries are idempotent. The exact `409`/`429` split depends on timing and bucket history; it is not a fixed benchmark result.
+
+## Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DB_HOST` / `DB_PORT` | `localhost` / `5432` | PostgreSQL address |
+| `DB_NAME` | `tickit` | Application database |
+| `DB_USER` / `DB_PASS` | `tickit` / empty | Local database credentials; override for your machine |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | Redis address |
+| `SERVER_PORT` | `8080` | Local application port |
+| `TEST_DATABASE_URL` | `jdbc:postgresql://localhost:5432/tickit_test` | Test database |
+| `EMAIL_ENABLED` | `false` | Enable optional SMTP delivery |
+| `SMTP_HOST` / `SMTP_PORT` | `smtp.gmail.com` / `587` | SMTP address |
+| `SMTP_USER` / `SMTP_PASS` | empty | SMTP credentials |
+| `EMAIL_FROM` | `noreply@tickit.live` | Sender address |
+
+Spring properties can also be overridden through standard environment variables, for example `APP_SEAT_HOLD_TTL_SECONDS=120`. Compose supplies its own demo database credentials. Keep credentials out of Git; `.env` files are ignored.
+
+## Repository layout
+
 ```text
-==================================================================
-⚡ TICKIT FLASH-SALE CONCURRENCY BENCHMARK
-Target Base URL: http://localhost:8080
-Target Event ID: 1
-Concurrent Spikes: 50 requests
-==================================================================
-🔍 Querying seat map for a FREE seat... Targeting Seat: ID 4 (A4)
-------------------------------------------------------------------
-🚀 Dispatching 50 concurrent requests to hold Seat A4 simultaneously...
-==================================================================
-📊 BENCHMARK RESULTS SUMMARY:
-------------------------------------------------------------------
-Total Concurrent Requests        : 50
-200 OK (Hold Acquired)           : 1
-409 CONFLICT (Blocked by Redis)  : 19
-429 RATE-LIMITED (Blocked by Lua): 30
-==================================================================
-✅ PASSED: Exactly 1 user acquired the hold. Zero race-condition overlap!
-💳 Confirming booking for the winning user... SUCCESS! Booking ID #4 confirmed.
-Seat A4 Final Live Status: BOOKED
-==================================================================
+src/main/java/com/tickit/
+  config/          MVC, Redis, WebSocket, async executor
+  controller/      Event, hold, booking endpoints
+  dto/             Request, response, live-update payloads
+  exception/       HTTP error mapping
+  init/            Demonstration seed data
+  model/           JPA entities
+  repository/      Spring Data repositories
+  service/         Booking, holds, expiry, rate limiting, email
+src/main/resources/
+  db/migration/    Flyway schema
+  scripts/         Atomic Redis Lua operations
+  static/          Browser UI and vendored WebSocket clients
+src/test/          Integration and concurrency regression tests
+docs/              API, demo guide, validation evidence
+.github/workflows/ Build, tests, container validation
 ```
 
----
+## Deliberate MVP boundaries
 
-## 📡 REST API Specifications
+- Single application instance with Spring's in-memory STOMP broker; horizontal deployment needs a shared broker and durable event delivery.
+- Simulated user IDs are client supplied. Owner checks prevent accidental cross-user releases, but are not an authorization boundary. Add JWT authentication before exposing the app publicly.
+- No payment processing, cancellations/refunds, or booking idempotency keys. A retry after an already-confirmed booking may return `409` or `410`; inspect booking history to reconcile.
+- SMTP is best-effort through a bounded async executor. A transactional outbox and retry worker are needed for durable delivery.
+- Redis scripts target standalone Redis; the expiry index is not designed for Redis Cluster hash-slot routing.
+- Container execution is defined in Compose and checked in CI; Docker was unavailable in the local validation environment.
 
-### Endpoints Overview
-
-| Method | Endpoint | Description | Status Codes |
-|---|---|---|---|
-| `GET` | `/api/events` | List all events with venue info and live availability | `200 OK` |
-| `GET` | `/api/events/{id}` | Get specific event details | `200 OK`, `404 Not Found` |
-| `GET` | `/api/events/{id}/seats` | Real-time seat grid with statuses (`FREE`, `HELD`, `BOOKED`) | `200 OK` |
-| `POST` | `/api/holds` | Acquire short-TTL hold on a seat | `200 OK`, `409 Conflict`, `429 Too Many Requests` |
-| `DELETE`| `/api/holds/{eventId}/{seatId}` | Voluntarily release a hold | `200 OK` |
-| `POST` | `/api/bookings` | Finalize booking (OCC committed in database) | `201 Created`, `409 Conflict`, `410 Gone`, `429 Too Many Requests` |
-| `GET` | `/api/bookings/user/{userId}` | Retrieve booking history for a user | `200 OK` |
-
-### Sample Payload: Hold Request
-`POST /api/holds`
-```json
-{
-  "eventId": 1,
-  "seatId": 4,
-  "userId": 1
-}
-```
-**Response (`200 OK`)**:
-```json
-{
-  "status": "HELD",
-  "eventId": 1,
-  "seatId": 4,
-  "seatLabel": "A4",
-  "expiresInSeconds": 120,
-  "message": "Seat held successfully for 120 seconds. Complete booking before timer expires."
-}
-```
-
-### Sample Payload: Confirm Booking
-`POST /api/bookings`
-```json
-{
-  "eventId": 1,
-  "seatId": 4,
-  "userId": 1
-}
-```
-**Response (`201 Created`)**:
-```json
-{
-  "bookingId": 4,
-  "eventId": 1,
-  "seatId": 4,
-  "seatLabel": "A4",
-  "status": "CONFIRMED",
-  "bookedAt": "2026-10-22T17:21:46.418723"
-}
-```
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-* Java 21+ & Maven 3.9+
-* PostgreSQL & Redis (running locally or via Docker)
-
-### Option 1: 1-Click Launch with Docker Compose
-```bash
-git clone git@github.com:naman771/TickIt.git
-cd TickIt
-
-# Starts PostgreSQL, Redis, and TickIt
-docker-compose up --build
-```
-Access the application at: **`http://localhost:8080`**
-
-### Option 2: Native Run (with local PostgreSQL & Redis)
-```bash
-# 1. Create the database
-createdb tickit
-
-# 2. Start Redis
-brew services start redis
-
-# 3. Launch TickIt
-mvn spring-boot:run
-```
-
----
-
-## 🛠️ Tech Stack
-* **Language & Framework**: Java 21, Spring Boot 3.2.5
-* **Data Layer**: Spring Data JPA, PostgreSQL 16/18, Flyway Migrations
-* **Cache & Distributed Locking**: Redis 7/8, Redis Lua Scripts
-* **Messaging & Real-Time**: Spring WebSocket, STOMP, SockJS
-* **Testing**: JUnit 5, MockMvc, Java Concurrency Utilities (`CountDownLatch`, `ExecutorService`)
-* **Deployment**: Docker, Docker Compose
+The interface includes local event artwork and vendored SockJS/STOMP clients, so the booking flow does not require third-party CDNs. Third-party licenses are retained under `static/vendor/`.
