@@ -4,13 +4,13 @@
 
 A ticketing application with live seat selection, temporary reservations, and a checkout backed by PostgreSQL and Redis. Built with Java 21 and Spring Boot.
 
-[Getting started](#getting-started) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Demo guide](docs/DEMO.md) · [CI](https://github.com/naman771/TickIt/actions)
+[Getting started](#getting-started) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Walkthrough](docs/DEMO.md) · [CI](https://github.com/naman771/TickIt/actions)
 
 ![TickIt — event discovery](docs/images/tickit-desktop.png)
 
 ## The experience
 
-Discover events, filter by category, and search by artist or city. Choose a seat on the live map, reserve it for two minutes, then confirm. Bookings appear in **My tickets**. Other connected browsers see reservations, releases, and confirmations as they happen.
+Discover events, filter by category, and search by artist or city. Choose a seat on the live map, reserve it for two minutes, then complete checkout when payments are enabled. Bookings appear in **My tickets**. Other connected browsers see reservations, releases, and confirmations as they happen.
 
 [See the seat-selection and checkout screen →](docs/images/tickit-booking.png)
 
@@ -24,7 +24,7 @@ cd TickIt
 docker compose up --build -d
 ```
 
-Open [localhost:8080](http://localhost:8080). The application creates its schema and seeds three events, 132 seats, and three demo accounts. The first build downloads dependencies.
+Open [localhost:8080](http://localhost:8080). The application creates its schema with an empty catalog. The first build downloads dependencies.
 
 For a machine already using the default ports:
 
@@ -48,7 +48,7 @@ Prefer running Java locally? See [local development and configuration](docs/DEVE
 
 ## Verification
 
-**19 tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
+**41 tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
 
 CI runs the suite against PostgreSQL and Redis, validates Docker Compose, and builds the container. [Validation details →](docs/VALIDATION.md)
 
@@ -56,12 +56,16 @@ CI runs the suite against PostgreSQL and Redis, validates Docker Compose, and bu
 # Requires a separate tickit_test database and local PostgreSQL/Redis.
 DB_USER="$(whoami)" mvn verify
 
-# Against a running application; reserves and books one available seat.
-./scripts/concurrency_benchmark.sh http://localhost:8080 1 50
+# Set TICKIT_ACCESS_TOKEN locally for an authenticated probe; one seat is briefly held.
+./scripts/rate_limit_probe.sh http://localhost:8080 1 25
 ```
 
-## Project notes
+## Accounts and deployment
 
-This is a working MVP with simulated accounts. It does not collect payments or provide authentication. SMTP is optional and disabled by default. JWT, durable notifications, and multi-instance messaging are documented in the [roadmap](docs/ROADMAP.md).
+Customer signup and Google sign-in use Clerk. The API verifies signed sessions and isolates each account's bookings. A separate [developer workspace](docs/PRODUCTION_SETUP.md#developer-workspace) uses a server-side access allowlist.
 
-[API reference](docs/API.md) · [Demo walkthrough](docs/DEMO.md) · [Development](docs/DEVELOPMENT.md) · [Contributing](CONTRIBUTING.md) · [Asset credits](docs/ASSETS.md)
+Without provider configuration the website permits browsing and keeps protected operations closed. Real payment checkout is the next phase; the API cannot issue unpaid tickets. Sample catalog seeding is opt-in for local development.
+
+The intended domains are `tickit.site` and `developers.tickit.site`; domain ownership is pending. See [production setup and account requirements](docs/PRODUCTION_SETUP.md).
+
+[API reference](docs/API.md) · [Architecture](docs/ARCHITECTURE.md) · [Development](docs/DEVELOPMENT.md) · [Roadmap](docs/ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Asset credits](docs/ASSETS.md)

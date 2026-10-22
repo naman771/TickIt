@@ -9,7 +9,9 @@ export DB_USER="$(whoami)"
 mvn spring-boot:run
 ```
 
-Open `http://localhost:8080`. Redis should be available on port 6379. Flyway owns schema changes; JPA validates the result.
+Open `http://localhost:8080`. Redis should be available on port 6379. Public browsing works without identity credentials; protected operations require Clerk configuration. Flyway owns schema changes; JPA validates the result.
+
+Sample catalog data is opt-in with `APP_SEED_ENABLED=true`; it is disabled by default. Test fixtures are enabled only in the test profile. See [identity and production setup](PRODUCTION_SETUP.md).
 
 ## Tests
 

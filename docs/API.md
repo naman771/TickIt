@@ -1,54 +1,63 @@
 # API reference
 
-Base URL: `http://localhost:8080`. The MVP uses simulated users 1–3; there is no login or payment step.
+Base URL: `http://localhost:8080`. Public event browsing does not require an account. Protected operations require a Clerk session token in `Authorization: Bearer <token>`.
 
-## Book a seat
+## Public catalog
 
-Find an available seat first; seeded seat 1 is already booked.
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/events` | Event list |
+| GET | `/api/events/{id}` | Event details |
+| GET | `/api/events/{id}/seats` | Seat map and ticket prices |
+| GET | `/api/public/config` | Public identity configuration and checkout availability |
+| GET | `/actuator/health` | Application health |
+
+Current catalog prices are in USD. No currency conversion is inferred from the customer's location.
+
+## Accounts and reservations
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/me` | Verified account profile; creates the local identity mapping if needed |
+| GET | `/api/bookings/me` | The signed-in account's booking history |
+| POST | `/api/holds` | Acquire a short-lived seat hold |
+| DELETE | `/api/holds/{eventId}/{seatId}` | Release the signed-in account's hold |
+| POST | `/api/bookings` | Unavailable outside automated tests until paid checkout is implemented |
+
+A hold request contains `{"eventId":1,"seatId":3}`. The server resolves the user from the signed session. A supplied `userId` is accepted only when it matches that account; it never overrides the session identity. The older history route `/api/bookings/user/{id}` is retained with the same owner check.
 
 ```bash
-curl -s http://localhost:8080/api/events/1/seats
-
+curl -s http://localhost:8080/api/events
+curl -s http://localhost:8080/api/me \
+  -H "Authorization: Bearer $TICKIT_ACCESS_TOKEN"
 curl -i -X POST http://localhost:8080/api/holds \
+  -H "Authorization: Bearer $TICKIT_ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"eventId":1,"seatId":3,"userId":1}'
-
-curl -i -X POST http://localhost:8080/api/bookings \
-  -H 'Content-Type: application/json' \
-  -d '{"eventId":1,"seatId":3,"userId":1}'
-
-curl -s http://localhost:8080/api/bookings/user/1
+  -d '{"eventId":1,"seatId":3}'
 ```
 
-`POST /api/holds` returns `200` with `status`, `eventId`, `seatId`, `seatLabel`, and `expiresInSeconds`. Same-owner retries return the remaining lifetime, without extending the hold.
+Same-owner hold retries do not extend the original expiry. IP limits and authenticated-subject limits are enforced in Redis; `X-User-Id` is not a trusted identity.
 
-`POST /api/bookings` returns `201` with `bookingId`, `eventId`, `seatId`, `seatLabel`, `status: "CONFIRMED"`, and `bookedAt`.
+## Developer workspace
 
-To release a hold before booking:
+`GET /api/developer/overview` requires a verified session whose subject is explicitly listed in `DEVELOPER_SUBJECTS`. A normal customer account receives `403`.
 
-```bash
-curl -i -X DELETE 'http://localhost:8080/api/holds/1/3?userId=1'
-```
+It returns infrastructure availability, integration flags, aggregate catalog/account/booking counts, and the check timestamp. It does not return secrets or customer records.
 
-Release requires the current owner's ID. There is no public endpoint for unconditional hold deletion.
-
-## Status codes
+## HTTP status codes
 
 | Status | Meaning |
 |---|---|
-| 200 | Read, hold acquisition, or release succeeded |
-| 201 | Booking committed |
-| 400 | Invalid payload, missing user ID, unknown seat/user, or seat/event mismatch |
-| 404 | Event detail or seat map not found |
-| 409 | Competing hold, duplicate booking, or release by a different owner |
-| 410 | Booking attempted without a valid hold |
-| 429 | Bucket exhausted; `Retry-After: 10` seconds |
-| 500 | Unexpected server failure |
+| 200 | Successful read or hold operation |
+| 400 | Invalid request |
+| 401 | Sign-in required or invalid token |
+| 403 | Another account's resource, unverified email, or missing developer access |
+| 404 | Resource not found |
+| 409 | Reservation/account conflict |
+| 410 | Missing or expired hold in the booking service |
+| 429 | Rate limit exceeded; retry after the supplied delay |
+| 503 | Checkout or account provider unavailable |
 
-JSON errors contain an `error` message. Advice-generated errors also include `status` and `timestamp`; explicit controller conflicts may contain only `error`.
+## Live updates
 
-## Live seat updates
-
-Connect a SockJS/STOMP client to `/ws`, then subscribe to `/topic/seats/{eventId}`. Messages contain `eventId`, `seatId`, `seatLabel`, and `status` (`HELD`, `FREE`, or `BOOKED`). Hold messages also identify the demo holder. Expiration messages may use the numeric seat ID as the label; use `seatId` for identity.
-
-Messages are advisory: reconcile with `GET /api/events/{id}/seats` after reconnecting. The browser also refreshes this authoritative snapshot every five seconds. Event-list availability counts exclude confirmed bookings; the seat-map badge shows currently free seats and also excludes active holds.
+The public read-only seat map uses SockJS `/ws` and STOMP `/topic/seats/{eventId}`. Clients reconcile with the seat API after reconnecting and every five seconds. Messages are advisory; PostgreSQL remains authoritative for confirmed bookings.

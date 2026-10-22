@@ -1,64 +1,36 @@
-# MVP validation
+# Validation
 
-Validated on **23 October 2026** with Java 21, PostgreSQL 18.6, and local Redis. Tests ran against a separate `tickit_test` database and Redis database 15; browser checks used an isolated `tickit_demo` database and Redis database 14.
+Validated on **23 October 2026** with Java 21, PostgreSQL 18.6, and local Redis. Tests use a separate `tickit_test` database and Redis database 15.
 
-## Backend
+## Backend and access control
 
 Command: `DB_USER=<local-postgres-user> mvn -B verify`
 
 ```text
-Tests run: 19, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 41, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
 | Suite | Tests | Coverage |
 |---|---:|---|
-| SeatHoldServiceTest | 3 | Acquisition, exclusion, same-owner retries, release |
+| SeatHoldServiceTest | 3 | Acquisition, exclusion, same-owner retry, release |
 | RateLimiterServiceTest | 3 | Capacity, rejection, refill |
-| BookingFlowIntegrationTest | 7 | Events, seat map, booked-seat conflict, missing hold, mismatched event, required release owner, health without SMTP |
-| BookingConcurrencyTest | 1 | 50 concurrent contenders; one booking and one database row |
-| BookingSafetyTest | 5 | Rollback, notification outage, owner-only release, expiration broadcast, database uniqueness without Redis |
+| BookingFlowIntegrationTest | 7 | REST behavior and health without optional SMTP |
+| BookingConcurrencyTest | 1 | 50 contenders; one booking and one database row |
+| BookingSafetyTest | 5 | Rollback, notification outage, owner release, expiry, database uniqueness |
+| AccountSecurityTest | 16 | Protected APIs, spoofed identities, account isolation, developer authorization, separate host routing, safe provisioning and no unpaid checkout |
+| SessionTokenValidationTest | 6 | Actual RSA signatures, issuer, expiry, allowed origin and pending-session rejection |
 
-```text
-Total Competing Threads: 50
-Successful Bookings:     1
-Rejected Attempts:      49
-```
+Authorization tests inject authenticated principals locally to test account boundaries. Cryptographic tests sign real JWTs with a generated RSA key and verify/reject them through Nimbus. Live Clerk/Google OAuth has not been exercised because provider accounts and credentials have not been supplied.
 
-This is a bounded contention test, not a throughput measurement or proof of behavior under every failure condition.
+## Website validation
 
-## Browser walkthrough
+Browser checks cover customer discovery, search/filtering, responsive seat selection, unauthenticated account entry states, and the separate developer portal shell. Public pages use locally served photography and WebSocket clients. Real identity SDKs require the configured Clerk service.
 
-Headless Chrome checked two browser windows and a 390px mobile viewport:
+Earlier booking-flow checks exercised holds, release, expiration and confirmation before direct public confirmation was closed for the payment integration. Current deployed checkout is intentionally unavailable; there is no claim of successful real payment testing.
 
-- Application scripts and event photographs loaded while non-local network requests were blocked.
-- Category filtering and artist search returned the expected event cards.
-- Booking confirmation led to the new reservation in My tickets.
-- Account switching was blocked during an active hold.
-- Desktop/mobile discovery and checkout layouts were checked.
-- Hold acquisition and release updated the second window.
-- Successful checkout updated both windows to `BOOKED`.
-- A short, 10-second test hold expired and returned to `FREE`.
-- No browser page errors were observed.
-- The mobile page had no document-level horizontal overflow; the seat map scrolls within its panel.
+## CI and remaining external validation
 
-The shipped hold default remains **120 seconds**. Screenshots are in [images/](images/).
+CI runs Maven tests, syntax-checks all three frontend scripts and the authenticated probe, validates Compose, and builds the container.
 
-## Live HTTP demonstration
-
-Command: `./scripts/concurrency_benchmark.sh http://localhost:8081 1 50`
-
-```text
-HTTP response counts: {'200': 7, '409': 13, '429': 30}
-PASS: exactly one distinct hold owner (same-owner retries are idempotent).
-PASS: winning booking confirmed; seat is BOOKED.
-```
-
-Seven successful hold responses belonged to one owner retrying the same reservation. Response counts depend on timing and bucket state.
-
-## Other checks and limits
-
-- JavaScript syntax, shell syntax, and Git whitespace checks passed.
-- Maven produced the executable application JAR.
-- Docker was unavailable locally. The GitHub Actions workflow provisions PostgreSQL/Redis, repeats `mvn verify`, validates Compose configuration, and builds the container; its remote result is tracked in GitHub Actions.
-- Real SMTP delivery, payments, JWT, multi-instance messaging, and production deployment were not validated and are outside this MVP.
+Still required: live Google/email signup with the user's Clerk application, authorized developer login, Razorpay test/live payments, signed payment webhooks, durable ticket delivery, domain ownership/DNS, and hosted staging validation. Details are in [production setup](PRODUCTION_SETUP.md).

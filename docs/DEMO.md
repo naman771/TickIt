@@ -1,50 +1,41 @@
-# Five-minute demonstration
+# Project walkthrough
 
-## Before presenting
+The public website presents the customer product. Engineering diagnostics live in a separate restricted developer workspace.
 
-1. Start with `docker compose up --build -d`, or run the local Java setup from the README.
-2. Open the app in two windows. Use **Find tickets** to open the same event in both windows. Pick Alex in one and Sam in the other.
-3. Confirm `curl -f http://localhost:8080/actuator/health` returns `UP`.
-4. Keep a terminal ready at the repository root. Use a free seat, not seeded seat A1.
+## Customer walkthrough
 
-## Walkthrough
+1. Open the customer website and browse the event catalog. Search by artist/city or filter by category.
+2. Open an event to view live seat availability and ticket prices.
+3. Sign up or sign in through Clerk. Enable Google in your Clerk application to offer Google sign-in alongside email/password.
+4. View My tickets while signed in. A customer can access only their own bookings.
 
-**0:00 — Explain the problem.** Many users can try the same seat. A hold gives one user time to check out; a database uniqueness constraint prevents duplicate confirmed bookings.
+Without provider configuration, browsing remains available and sign-in reports temporary unavailability. Payment checkout remains disabled until the paid-order flow is implemented. There is no simulated account picker or fake successful purchase.
 
-**0:30 — Show live holds.** Open an event, choose a seat, then select **Reserve this seat** as Alex. Sam sees the same seat become reserved. Point out the two-minute countdown.
+## Developer walkthrough
 
-**1:15 — Show release or expiration.** Release Alex's hold and watch it become available in Sam's window. For a quicker expiration demo, start the local app with `APP_SEAT_HOLD_TTL_SECONDS=10 mvn spring-boot:run` before presenting.
+1. Open `/developer/`, or the configured developer domain after DNS is connected.
+2. Sign in with a Clerk account whose user ID is in `DEVELOPER_SUBJECTS`.
+3. Inspect real infrastructure status, catalog counts, and identity/payment/email integration status.
+4. A normal customer session is rejected by developer APIs.
 
-**2:00 — Confirm a booking.** Hold a free seat and select **Confirm reservation**. Both windows show it as booked. No payment is taken.
+## Automated proof
 
-**2:45 — Demonstrate rate limiting.** Open **The project → Developer demonstration** and run the 25-request burst. Repeated requests by that simulated user can succeed idempotently until the bucket is exhausted; observe `429` responses. Give the bucket four seconds to refill before continuing normal checkout.
-
-**3:30 — Show contention proof.**
-
-```bash
-mvn test -Dtest=BookingConcurrencyTest
-```
-
-Expected invariant: 50 competing users, 1 successful booking, 49 rejections, 1 database row. This exercises the service directly; HTTP rate limiting is demonstrated separately.
-
-**4:15 — Show the architecture.** Explain Redis holds, PostgreSQL uniqueness, and post-commit notifications. `@Version` protects updates to existing rows; uniqueness protects competing booking inserts.
-
-## Optional terminal demo
+Use an isolated test database and Redis database 15:
 
 ```bash
-./scripts/concurrency_benchmark.sh http://localhost:8080 1 50
+DB_USER="$(whoami)" mvn verify
+DB_USER="$(whoami)" mvn test -Dtest=BookingConcurrencyTest
 ```
 
-This consumes one free seat. It reports actual HTTP results, verifies one distinct hold owner, and books using that owner. Do not promise fixed response counts: refill timing and prior requests affect them.
+The service-level concurrency test competes 50 users for one seat and checks exactly one booking and one database row. The test-only direct booking path is not available in a deployed application.
 
-## Troubleshooting
+For a controlled hold/rate-limit probe with a real authenticated account:
 
-- **Port occupied:** use `APP_PORT=8081 POSTGRES_PORT=5433 REDIS_PORT=6380 docker compose up --build -d`, then open port 8081.
-- **429 during checkout:** wait a few seconds for token refill; the hold remains active until its original deadline.
-- **Database connection failure:** check `DB_USER`, `DB_PASS`, and that the database exists.
-- **No free seats:** choose another event. Reset disposable Compose data only when you intend to delete all demo bookings.
-- **A missed live update:** the browser refreshes the seat map within five seconds; check the browser's `/ws` connection if updates remain delayed.
+```bash
+# Set TICKIT_ACCESS_TOKEN in your environment first.
+./scripts/rate_limit_probe.sh http://localhost:8080 1 25
+```
 
-## Honest project positioning
+This briefly reserves one free seat and releases it. It does not attempt payment or produce tickets.
 
-Present this as a concurrency-focused ticket-booking MVP. JWT, payments, durable notifications, distributed WebSocket delivery, and production hardening remain follow-up work. See the README for the exact boundaries.
+See [production setup](PRODUCTION_SETUP.md) for provider accounts and the remaining payment work.

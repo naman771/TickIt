@@ -6,7 +6,7 @@ Before opening a pull request:
 
 ```bash
 mvn verify
-bash -n scripts/concurrency_benchmark.sh
+bash -n scripts/rate_limit_probe.sh
 docker compose config --quiet
 ```
 

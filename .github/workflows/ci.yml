@@ -40,7 +40,9 @@ jobs:
         with:
           node-version: '22'
       - run: node --check src/main/resources/static/js/app.js
-      - run: bash -n scripts/concurrency_benchmark.sh
+      - run: node --check src/main/resources/static/js/auth.js
+      - run: node --check src/main/resources/static/developer/portal.js
+      - run: bash -n scripts/rate_limit_probe.sh
       - run: docker compose config --quiet
       - run: docker build -t tickit:ci .
       - uses: actions/upload-artifact@v4
