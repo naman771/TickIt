@@ -29,6 +29,8 @@ import java.util.stream.Collectors;
 public class BookingController {
 
     private final BookingService bookingService;
+    private final com.tickit.service.CurrentUserService currentUser;
+    private final com.tickit.config.AuthSettings authSettings;
     private final SeatHoldService seatHoldService;
     private final SeatRepository seatRepository;
     private final BookingRepository bookingRepository;
@@ -43,7 +45,7 @@ public class BookingController {
     public ResponseEntity<?> holdSeat(@Valid @RequestBody BookingRequest request) {
         Long eventId = request.getEventId();
         Long seatId = request.getSeatId();
-        Long userId = request.getUserId();
+        Long userId = currentUser.resolve(request.getUserId()).getId();
 
         Seat seat = seatRepository.findById(seatId)
                 .orElseThrow(() -> new IllegalArgumentException("Seat not found"));
@@ -94,7 +96,8 @@ public class BookingController {
     @DeleteMapping("/holds/{eventId}/{seatId}")
     public ResponseEntity<?> releaseHold(@PathVariable Long eventId,
                                          @PathVariable Long seatId,
-                                         @RequestParam Long userId) {
+                                         @RequestParam(required = false) Long userId) {
+        userId = currentUser.resolve(userId).getId();
         if (!seatHoldService.releaseHold(eventId, seatId, userId)) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "No hold owned by this user"));
         }
@@ -119,10 +122,15 @@ public class BookingController {
      */
     @PostMapping("/bookings")
     public ResponseEntity<BookingResponse> createBooking(@Valid @RequestBody BookingRequest request) {
+        Long userId = currentUser.resolve(request.getUserId()).getId();
+        if (!authSettings.isTest()) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Checkout is temporarily unavailable");
+        }
         BookingResponse response = bookingService.createBooking(
                 request.getEventId(),
                 request.getSeatId(),
-                request.getUserId()
+                userId
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -132,6 +140,16 @@ public class BookingController {
      */
     @GetMapping("/bookings/user/{userId}")
     public ResponseEntity<List<BookingResponse>> getUserBookings(@PathVariable Long userId) {
+        userId = currentUser.resolve(userId).getId();
+        return bookingsForUser(userId);
+    }
+
+    @GetMapping("/bookings/me")
+    public ResponseEntity<List<BookingResponse>> getMyBookings() {
+        return bookingsForUser(currentUser.resolve(null).getId());
+    }
+
+    private ResponseEntity<List<BookingResponse>> bookingsForUser(Long userId) {
         List<Booking> bookings = bookingRepository.findByUserId(userId);
         List<BookingResponse> responses = bookings.stream().map(b -> BookingResponse.builder()
                 .bookingId(b.getId())

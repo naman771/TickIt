@@ -11,3 +11,9 @@ spring:
 logging:
   level:
     com.tickit: WARN
+
+app:
+  seed:
+    enabled: true
+  auth:
+    mode: test

@@ -66,6 +66,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(errorBody(400, ex.getMessage()));
     }
 
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleStatus(org.springframework.web.server.ResponseStatusException ex) {
+        return ResponseEntity.status(ex.getStatusCode()).body(errorBody(ex.getStatusCode().value(),
+                ex.getReason() == null ? "Request failed" : ex.getReason()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
         log.error("Unhandled exception", ex);

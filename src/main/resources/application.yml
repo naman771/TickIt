@@ -45,6 +45,17 @@ spring:
 
 # ── Application ─────────────────────────────────────────
 app:
+  developer:
+    host: ${DEVELOPER_HOST:developers.tickit.site}
+  seed:
+    enabled: ${APP_SEED_ENABLED:false}
+  auth:
+    mode: ${APP_AUTH_MODE:catalog}
+    developer-subjects: ${DEVELOPER_SUBJECTS:}
+    issuer: ${CLERK_ISSUER:}
+    publishable-key: ${CLERK_PUBLISHABLE_KEY:}
+    secret-key: ${CLERK_SECRET_KEY:}
+    allowed-origins: ${AUTH_ALLOWED_ORIGINS:}
   seat-hold:
     ttl-seconds: 120              # How long a seat is held before auto-release
   rate-limit:

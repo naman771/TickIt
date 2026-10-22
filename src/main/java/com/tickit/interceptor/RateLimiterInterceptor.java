@@ -19,6 +19,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class RateLimiterInterceptor implements HandlerInterceptor {
 
     private final RateLimiterService rateLimiterService;
+    private final com.tickit.config.AuthSettings authSettings;
 
     @Override
     public boolean preHandle(HttpServletRequest request,
@@ -31,18 +32,10 @@ public class RateLimiterInterceptor implements HandlerInterceptor {
                     "Too many requests from IP " + clientIp + ". Please try again later.");
         }
 
-        // Optionally rate-limit by userId header (if present)
-        String userIdHeader = request.getHeader("X-User-Id");
-        if (userIdHeader != null) {
-            try {
-                Long userId = Long.parseLong(userIdHeader);
-                if (!rateLimiterService.isAllowedForUser(userId)) {
-                    throw new RateLimitExceededException(
-                            "Too many requests for user " + userId + ". Please try again later.");
-                }
-            } catch (NumberFormatException ignored) {
-                // skip user-level limiting if header is invalid
-            }
+        var principal = request.getUserPrincipal();
+        if (principal != null && !authSettings.isTest()
+                && !rateLimiterService.isAllowed("rl:subject:" + principal.getName())) {
+            throw new RateLimitExceededException("Too many requests. Please try again later.");
         }
 
         return true; // proceed

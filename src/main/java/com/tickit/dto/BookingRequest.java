@@ -11,6 +11,5 @@ public class BookingRequest {
     @NotNull(message = "seatId is required")
     private Long seatId;
 
-    @NotNull(message = "userId is required")
     private Long userId;
 }

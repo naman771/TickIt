@@ -19,7 +19,13 @@ public class AppUser {
     @Column(name = "full_name", nullable = false, length = 255)
     private String fullName;
 
-    @Column(name = "password_hash", nullable = false, length = 255)
+    @Column(name = "auth_issuer", length = 512)
+    private String authIssuer;
+
+    @Column(name = "auth_subject", length = 255)
+    private String authSubject;
+
+    @Column(name = "password_hash", length = 255)
     private String passwordHash;
 
     @Column(name = "created_at", nullable = false, updatable = false)

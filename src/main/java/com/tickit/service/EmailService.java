@@ -80,6 +80,8 @@ public class EmailService {
                     </p>
                   </div>
                 </div>
-                """.formatted(userName, eventName, seatLabel, bookingId);
+                """.formatted(org.springframework.web.util.HtmlUtils.htmlEscape(userName),
+                        org.springframework.web.util.HtmlUtils.htmlEscape(eventName),
+                        org.springframework.web.util.HtmlUtils.htmlEscape(seatLabel), bookingId);
     }
 }
