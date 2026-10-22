@@ -24,18 +24,13 @@ const esc = (value) =>
         c
       ],
   );
-const USERS = [
-  { id: 1, name: "Alex Morgan" },
-  { id: 2, name: "Sam Taylor" },
-  { id: 3, name: "Jordan Lee" },
-];
 const state = {
   events: [],
   seatCache: {},
   seats: [],
   event: null,
   selected: null,
-  user: USERS[0],
+  user: null,
   hold: null,
   category: "all",
   search: "",
@@ -45,7 +40,7 @@ const state = {
   connection: false,
 };
 const app = document.getElementById("app");
-const userSelect = document.getElementById("userSelect");
+const accountControls = document.getElementById("accountControls");
 const dialog = document.getElementById("confirmationDialog");
 let stomp = null,
   subscription = null,
@@ -92,12 +87,17 @@ const owns = (seat) =>
   state.hold &&
   state.hold.eventId === state.event?.id &&
   state.hold.seatId === seat?.seatId &&
-  state.hold.userId === state.user.id;
+  state.hold.userId === state.user?.id;
 
 async function api(url, options = {}) {
+  const token = await TickItAuth.token();
   const response = await fetch(url, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
   });
   const data = await response.json();
   if (!response.ok) {
@@ -171,7 +171,7 @@ function renderBooking() {
   const e = state.event;
   state.view = "booking";
   setNav("events");
-  app.innerHTML = `<div class="wrap"><div class="page-top"><a class="back-link" href="#events">${icon("back")} Back to experiences</a><div class="flow-steps" aria-label="Booking progress"><span class="active"><b>1</b>Choose a seat</span><span class="${state.hold ? "active" : ""}"><b>2</b>Reserve & confirm</span><span><b>3</b>You’re going</span></div></div><section class="event-masthead"><img src="${photo(e)}" alt=""><div><div class="eyebrow">${isRace(e) ? "Motorsport" : "Live music"} / ${esc(city(e))}</div><h1>${esc(shortName(e))}: ${esc(tour(e))}</h1><div class="meta-line"><span>${icon("calendar")}${esc(when(e.startTime))} · ${esc(hour(e.startTime))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div></section><div class="booking-layout"><section><div class="map-panel"><div class="map-head"><div><h2>Find your place in the crowd.</h2><p>Select one available seat to get started.</p></div><span class="live-indicator"><i class="live-dot"></i><span id="availabilityCount"></span></span></div><div class="stage">${isRace(e) ? "TRACK / FINISH STRAIGHT" : "STAGE / FRONT OF HOUSE"}</div><div class="map-scroll" tabindex="0" role="region" aria-label="Seat map, scroll horizontally to see every seat"><div class="seat-rows" id="seatGrid"></div></div><div class="map-legend"><span><i class="swatch"></i>Available</span><span><i class="swatch chosen"></i>Your selection</span><span><i class="swatch reserved"></i>Reserved</span><span><i class="swatch unavailable"></i>Booked</span></div></div><p class="map-caption">Prices shown in USD. Your seat is held for two minutes while you confirm. Seat availability updates live.</p></section><aside class="checkout" id="checkout" aria-label="Reservation summary"></aside></div></div>`;
+  app.innerHTML = `<div class="wrap"><div class="page-top"><a class="back-link" href="#events">${icon("back")} Back to experiences</a><div class="flow-steps" aria-label="Booking progress"><span class="active"><b>1</b>Choose a seat</span><span class="${state.hold ? "active" : ""}"><b>2</b>Reserve & confirm</span><span><b>3</b>You’re going</span></div></div><section class="event-masthead"><img src="${photo(e)}" alt=""><div><div class="eyebrow">${isRace(e) ? "Motorsport" : "Live music"} / ${esc(city(e))}</div><h1>${esc(shortName(e))}: ${esc(tour(e))}</h1><div class="meta-line"><span>${icon("calendar")}${esc(when(e.startTime))} · ${esc(hour(e.startTime))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div></section><div class="booking-layout"><section><div class="map-panel"><div class="map-head"><div><h2>Find your place in the crowd.</h2><p>Select one available seat to get started.</p></div><span class="live-indicator"><i class="live-dot"></i><span id="availabilityCount"></span></span></div><div class="stage">${isRace(e) ? "TRACK / FINISH STRAIGHT" : "STAGE / FRONT OF HOUSE"}</div><div class="map-scroll" tabindex="0" role="region" aria-label="Seat map, scroll horizontally to see every seat"><div class="seat-rows" id="seatGrid"></div></div><div class="map-legend"><span><i class="swatch"></i>Available</span><span><i class="swatch chosen"></i>Your selection</span><span><i class="swatch reserved"></i>Reserved</span><span><i class="swatch unavailable"></i>Booked</span></div></div><p class="map-caption">Prices shown in USD. Select a seat to see its price and availability.</p></section><aside class="checkout" id="checkout" aria-label="Reservation summary"></aside></div></div>`;
   renderSeatMap();
   renderCheckout();
   subscribe();
@@ -209,10 +209,18 @@ function renderCheckout() {
     .querySelectorAll(".flow-steps span")[1]
     ?.classList.toggle("active", !!held);
   if (!seat) {
-    box.innerHTML = `<h2>Your reservation</h2><div class="checkout-empty">${icon("ticket")}A great night starts with a seat.<br>Choose one on the map.</div><button class="primary-button" disabled>Select a seat to continue ${icon("arrow")}</button><p class="checkout-footnote">${icon("lock")}No payment is taken in this demo.</p>`;
+    box.innerHTML = `<h2>Your reservation</h2><div class="checkout-empty">${icon("ticket")}A great night starts with a seat.<br>Choose one on the map.</div><button class="primary-button" disabled>Select a seat to continue ${icon("arrow")}</button><p class="checkout-footnote">${icon("lock")}Secure checkout</p>`;
     return;
   }
-  box.innerHTML = `<h2>Your reservation</h2>${held ? '<div class="hold-timer"><span>Seat reserved for you</span><strong id="holdCountdown"></strong></div>' : ""}<div class="selected-summary"><div><strong>Row ${esc(seat.row)}, Seat ${seat.number}</strong><small>Standard admission · 1 ticket</small></div><span class="section-tag">${esc(seat.label)}</span></div><div class="checkout-line"><span>Ticket price</span><span>${money(seat.price)}</span></div><div class="checkout-line"><span>Booking fee</span><span>${money(0)}</span></div><div class="checkout-line checkout-total"><span>Total <small>(USD)</small></span><strong>${money(seat.price)}</strong></div><button class="primary-button" id="${held ? "bookBtn" : "holdBtn"}" data-action="${held ? "book" : "hold"}" ${state.busy || seat.status === "BOOKED" ? "disabled" : ""}>${state.busy ? "Just a moment…" : held ? "Confirm reservation" : "Reserve this seat"} ${icon("arrow")}</button>${held ? '<button class="quiet-button" id="releaseBtn" data-action="release">Release this seat</button>' : ""}<p class="checkout-footnote">${icon("lock")}No payment is taken in this demo.</p><p class="checkout-user">Reserving as ${esc(state.user.name)}.<br>${held ? "Your hold expires automatically if you leave." : "You’ll have two minutes to confirm your seat."}</p>`;
+  if (!state.user) {
+    box.innerHTML = `<h2>Your reservation</h2><div class="selected-summary"><div><strong>Row ${esc(seat.row)}, Seat ${seat.number}</strong><small>Standard admission · 1 ticket</small></div><span class="section-tag">${esc(seat.label)}</span></div><div class="checkout-line checkout-total"><span>Ticket price (USD)</span><strong>${money(seat.price)}</strong></div><button class="primary-button" data-auth="sign-in">Sign in to continue ${icon("arrow")}</button><p class="checkout-user">New here? <button class="inline-button" data-auth="sign-up">Create an account</button></p>`;
+    return;
+  }
+  if (!TickItAuth.config.checkoutEnabled) {
+    box.innerHTML = `<h2>Your reservation</h2><div class="selected-summary"><strong>Row ${esc(seat.row)}, Seat ${seat.number}</strong></div><div class="checkout-line checkout-total"><span>Ticket price (USD)</span><strong>${money(seat.price)}</strong></div><button class="primary-button" disabled>Checkout unavailable</button><p class="checkout-user">Online booking is temporarily unavailable for this experience. Please check back later.</p>`;
+    return;
+  }
+  box.innerHTML = `<h2>Your reservation</h2>${held ? '<div class="hold-timer"><span>Seat reserved for you</span><strong id="holdCountdown"></strong></div>' : ""}<div class="selected-summary"><div><strong>Row ${esc(seat.row)}, Seat ${seat.number}</strong><small>Standard admission · 1 ticket</small></div><span class="section-tag">${esc(seat.label)}</span></div><div class="checkout-line"><span>Ticket price</span><span>${money(seat.price)}</span></div><div class="checkout-line"><span>Booking fee</span><span>${money(0)}</span></div><div class="checkout-line checkout-total"><span>Total <small>(USD)</small></span><strong>${money(seat.price)}</strong></div><button class="primary-button" id="${held ? "bookBtn" : "holdBtn"}" data-action="${held ? "book" : "hold"}" ${state.busy || seat.status === "BOOKED" ? "disabled" : ""}>${state.busy ? "Just a moment…" : held ? "Confirm reservation" : "Reserve this seat"} ${icon("arrow")}</button>${held ? '<button class="quiet-button" id="releaseBtn" data-action="release">Release this seat</button>' : ""}<p class="checkout-footnote">${icon("lock")}Secure checkout</p><p class="checkout-user">Reserving as ${esc(state.user.name)}.<br>${held ? "Your hold expires automatically if you leave." : "You’ll have two minutes to confirm your seat."}</p>`;
   updateCountdown();
 }
 async function refreshSeats() {
@@ -252,16 +260,19 @@ function updateCountdown() {
 async function acquire() {
   const seat = selectedSeat();
   if (!seat || state.busy) return;
+  if (!state.user) {
+    TickItAuth.open("sign-in");
+    return;
+  }
+  if (!TickItAuth.config.checkoutEnabled) return;
   state.busy = true;
   renderCheckout();
   try {
     const data = await api("/api/holds", {
       method: "POST",
-      headers: { "X-User-Id": String(state.user.id) },
       body: JSON.stringify({
         eventId: state.event.id,
         seatId: seat.seatId,
-        userId: state.user.id,
       }),
     });
     state.hold = {
@@ -287,7 +298,7 @@ async function release() {
   state.busy = true;
   renderCheckout();
   try {
-    await api(`/api/holds/${h.eventId}/${h.seatId}?userId=${h.userId}`, {
+    await api(`/api/holds/${h.eventId}/${h.seatId}`, {
       method: "DELETE",
     });
     clearHold();
@@ -311,11 +322,9 @@ async function book() {
   try {
     const result = await api("/api/bookings", {
       method: "POST",
-      headers: { "X-User-Id": String(state.user.id) },
       body: JSON.stringify({
         eventId: h.eventId,
         seatId: h.seatId,
-        userId: h.userId,
       }),
     });
     clearHold();
@@ -332,16 +341,20 @@ async function book() {
   }
 }
 function showConfirmation(result, event, seat) {
-  dialog.innerHTML = `<div class="confirmation-icon">${icon("check")}</div><div class="eyebrow">Reservation confirmed</div><h2>You’re going.</h2><p>A seat with your name on it. Your reservation details are saved in My tickets.</p><div class="confirmation-details"><h3>${esc(shortName(event))} · ${esc(tour(event))}</h3><p><span>Date</span><strong>${esc(day(event.startTime))}</strong></p><p><span>Your seat</span><strong>Row ${esc(seat.row)}, Seat ${seat.number}</strong></p><p><span>Reference</span><strong>TK-${String(result.bookingId).padStart(6, "0")}</strong></p></div><button class="primary-button" data-action="view-tickets">View my tickets ${icon("arrow")}</button><button class="quiet-button" data-action="close-confirmation">Continue exploring</button><p style="font-size:9px;text-align:center">Demo reservation. No payment has been taken.</p>`;
+  dialog.innerHTML = `<div class="confirmation-icon">${icon("check")}</div><div class="eyebrow">Reservation confirmed</div><h2 id="confirmationTitle">You’re going.</h2><p>A seat with your name on it. Your reservation details are saved in My tickets.</p><div class="confirmation-details"><h3>${esc(shortName(event))} · ${esc(tour(event))}</h3><p><span>Date</span><strong>${esc(day(event.startTime))}</strong></p><p><span>Your seat</span><strong>Row ${esc(seat.row)}, Seat ${seat.number}</strong></p><p><span>Reference</span><strong>TK-${String(result.bookingId).padStart(6, "0")}</strong></p></div><button class="primary-button" data-action="view-tickets">View my tickets ${icon("arrow")}</button><button class="quiet-button" data-action="close-confirmation">Continue exploring</button><p style="font-size:9px;text-align:center">Your reservation details are saved in your account.</p>`;
   dialog.showModal();
 }
 async function renderTickets(sequence) {
   state.view = "tickets";
   setNav("tickets");
+  if (!state.user) {
+    app.innerHTML = `<div class="wrap"><div class="account-welcome"><div class="eyebrow">Your account</div><h1>Good things ahead.</h1><p>Sign in to see your tickets and keep your next great night close.</p><div class="account-welcome-actions"><button class="primary-button" data-auth="sign-in">Sign in</button><button class="secondary-button" data-auth="sign-up">Create account</button></div></div></div>`;
+    return;
+  }
   app.innerHTML =
     '<div class="loading-state"><span class="loader"></span>Finding your tickets…</div>';
   try {
-    const tickets = await api(`/api/bookings/user/${state.user.id}`);
+    const tickets = await api("/api/bookings/me");
     if (sequence !== routeSequence) return;
     app.innerHTML = `<div class="wrap"><div class="page-heading"><div class="eyebrow">Good things ahead</div><h1>Your next “I was there.”</h1><p>Reservations for ${esc(state.user.name)}. All the details, in one place.</p></div><div class="tickets-list">${
       tickets.length
@@ -351,7 +364,7 @@ async function renderTickets(sequence) {
             .map((t) => {
               const e = state.events.find((e) => e.id === t.eventId);
               return e
-                ? `<article class="ticket-card"><img src="${photo(e)}" alt=""><div class="ticket-body"><div class="ticket-top"><span>TK-${String(t.bookingId).padStart(6, "0")}</span><b class="status-badge">CONFIRMED</b></div><h2>${esc(shortName(e))} · ${esc(tour(e))}</h2><div class="meta-line"><span>${icon("calendar")}${esc(day(e.startTime))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div><div class="ticket-stub"><span>YOUR SEAT</span><strong>${esc(t.seatLabel)}</strong><small>Demo reservation</small></div></article>`
+                ? `<article class="ticket-card"><img src="${photo(e)}" alt=""><div class="ticket-body"><div class="ticket-top"><span>TK-${String(t.bookingId).padStart(6, "0")}</span><b class="status-badge">CONFIRMED</b></div><h2>${esc(shortName(e))} · ${esc(tour(e))}</h2><div class="meta-line"><span>${icon("calendar")}${esc(day(e.startTime))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div><div class="ticket-stub"><span>YOUR SEAT</span><strong>${esc(t.seatLabel)}</strong><small>Reserved admission</small></div></article>`
                 : "";
             })
             .join("")
@@ -360,11 +373,6 @@ async function renderTickets(sequence) {
   } catch (err) {
     renderError(err);
   }
-}
-function renderAbout() {
-  state.view = "about";
-  setNav("about");
-  app.innerHTML = `<div class="wrap"><div class="page-heading"><div class="eyebrow">Behind the experience</div><h1>Built for the rush.</h1><p>TickIt is a working ticket-reservation MVP exploring a simple promise: one seat should belong to one person, even when everyone wants it.</p></div><section class="about-intro"><h2>A considered experience.<br>A dependable foundation.</h2><p>The interface keeps the booking flow straightforward. Underneath, Redis handles short-lived reservations, PostgreSQL enforces booking uniqueness, and live updates keep everyone looking at the same seat map.<br><br>This is a demonstration, with simulated accounts and no payments. The source, design, and tests are available on GitHub.</p></section><section class="principles"><article class="principle"><span>01 / TIME TO DECIDE</span><h3>A hold that gives you a moment.</h3><p>An atomic Redis operation reserves your seat for two minutes. If you change your mind, the hold expires automatically.</p></article><article class="principle"><span>02 / ONE SEAT, ONE BOOKING</span><h3>Consistency where it counts.</h3><p>A PostgreSQL uniqueness constraint resolves competing checkouts. Confirmation events are sent only after the transaction commits.</p></article><article class="principle"><span>03 / EVERYONE IN THE LOOP</span><h3>A seat map that keeps up.</h3><p>WebSocket updates reflect new reservations and bookings. Periodic reconciliation recovers missed messages.</p></article></section><div class="project-meta"><span>Java 21 · Spring Boot · PostgreSQL · Redis · WebSockets</span><a class="text-action" href="https://github.com/naman771/TickIt" target="_blank" rel="noopener">Explore the source ${icon("arrow")}</a></div><details class="lab-details"><summary>Developer demonstration <span>Rate limiting / 25-request burst</span></summary><p>Send a controlled burst of hold requests as demo user 3. The shared IP token bucket allows 20 requests and refills at 5 per second. Same-owner holds are idempotent. This reserves one free seat briefly; it does not book it. Use the automated concurrency suite for independent competing-user validation.</p><button class="primary-button" data-action="run-lab" id="labButton">Run rate-limit demonstration ${icon("arrow")}</button><pre class="lab-result" id="labResult" aria-live="polite"></pre></details></div>`;
 }
 function renderError(err) {
   app.innerHTML = `<div class="wrap page-error"><h1>A brief intermission.</h1><p>${esc(err.message)}</p><button class="secondary-button" data-action="retry">Try again</button></div>`;
@@ -391,8 +399,7 @@ async function route() {
   }
   if (hash === "#tickets") {
     await renderTickets(sequence);
-  } else if (hash === "#about") renderAbout();
-  else if (eventMatch) {
+  } else if (eventMatch) {
     const id = Number(eventMatch[1]),
       e = state.events.find((e) => e.id === id);
     if (!e) {
@@ -446,48 +453,6 @@ function connect() {
     setTimeout(connect, 4000);
   }
 }
-async function runLab() {
-  const button = document.getElementById("labButton"),
-    result = document.getElementById("labResult");
-  if (!button || state.busy) return;
-  button.disabled = true;
-  result.textContent = "Preparing the demonstration…";
-  try {
-    const e = state.events[0],
-      seats = await api(`/api/events/${e.id}/seats`),
-      seat = seats.find((s) => s.status === "FREE");
-    if (!seat)
-      throw new Error("There are no free seats for this demonstration.");
-    const results = await Promise.all(
-      Array.from({ length: 25 }, () =>
-        fetch("/api/holds", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-User-Id": "3" },
-          body: JSON.stringify({
-            eventId: e.id,
-            seatId: seat.seatId,
-            userId: 3,
-          }),
-        }).then((r) => r.status),
-      ),
-    );
-    const counts = results.reduce(
-      (a, status) => ((a[status] = (a[status] || 0) + 1), a),
-      {},
-    );
-    result.textContent = `25 requests sent to seat ${seat.label}\n${Object.entries(
-      counts,
-    )
-      .map(([code, count]) => `HTTP ${code}  →  ${count} responses`)
-      .join(
-        "\n",
-      )}\n\nSame-user retries share one hold. The seat expires automatically.`;
-  } catch (err) {
-    result.textContent = err.message;
-  } finally {
-    button.disabled = false;
-  }
-}
 app.addEventListener("click", (event) => {
   const category = event.target.closest("[data-category]");
   if (category) {
@@ -516,7 +481,6 @@ app.addEventListener("click", (event) => {
   if (action === "book") book();
   if (action === "release") release();
   if (action === "retry") state.events.length ? route() : start();
-  if (action === "run-lab") runLab();
 });
 dialog.addEventListener("click", (event) => {
   const action = event.target.closest("[data-action]")?.dataset.action;
@@ -529,29 +493,47 @@ dialog.addEventListener("click", (event) => {
     routeTo("#events");
   }
 });
-userSelect.addEventListener("change", () => {
-  if (state.hold || state.busy) {
-    userSelect.value = state.user.id;
-    notify("Please confirm or release your seat before switching accounts.");
-    return;
+function renderAccount() {
+  accountControls.innerHTML = state.user
+    ? `<span class="signed-in-name">${esc(state.user.name)}</span><button class="account-login" data-auth="sign-out">Sign out</button>`
+    : `<button class="account-login" data-auth="sign-in">Sign in</button><button class="account-signup" data-auth="sign-up">Create account</button>`;
+}
+document.addEventListener("click", (event) => {
+  const action = event.target.closest("[data-auth]")?.dataset.auth;
+  if (action === "sign-out") TickItAuth.signOut();
+  else if (action) TickItAuth.open(action);
+});
+window.addEventListener("tickit:auth-error", (event) =>
+  notify(event.detail, true),
+);
+TickItAuth.onChange((user) => {
+  const changed = state.user?.id !== user?.id;
+  state.user = user;
+  if (changed) {
+    clearHold();
+    state.selected = null;
   }
-  state.user = USERS.find((u) => u.id === Number(userSelect.value)) || USERS[0];
-  sessionStorage.setItem("tickit-user", state.user.id);
+  renderAccount();
   if (state.view === "tickets") route();
-  else if (state.view === "booking") renderCheckout();
+  else if (state.view === "booking") {
+    renderSeatMap();
+    renderCheckout();
+  }
 });
 window.addEventListener("hashchange", route);
 async function start() {
   try {
-    const savedUser = Number(sessionStorage.getItem("tickit-user"));
-    state.user = USERS.find((u) => u.id === savedUser) || USERS[0];
-    userSelect.value = state.user.id;
-    const saved = JSON.parse(sessionStorage.getItem("tickit-hold") || "null");
-    if (saved && saved.deadline > Date.now()) {
-      state.hold = saved;
-      state.user = USERS.find((u) => u.id === saved.userId) || USERS[0];
-      userSelect.value = state.user.id;
+    try {
+      await TickItAuth.init();
+    } catch (error) {
+      notify(error.message, true);
     }
+    state.user = TickItAuth.user;
+    renderAccount();
+    const saved = JSON.parse(sessionStorage.getItem("tickit-hold") || "null");
+    if (saved && saved.deadline > Date.now() && state.user?.id === saved.userId)
+      state.hold = saved;
+    else clearHold();
     state.events = await api("/api/events");
     await Promise.all(
       state.events.map(async (e) => {

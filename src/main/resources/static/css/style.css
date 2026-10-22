@@ -127,28 +127,6 @@ img {
   align-items: center;
   gap: 14px;
 }
-.account-caption {
-  font-size: 8px;
-  letter-spacing: 1.6px;
-  color: var(--muted);
-}
-.account-select {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.account-select svg {
-  width: 17px;
-  height: 17px;
-}
-.account-select select {
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font-size: 12px;
-  max-width: 150px;
-  padding: 8px 2px;
-}
 .wrap {
   max-width: 1328px;
   margin: auto;
@@ -1059,101 +1037,6 @@ img {
   font-size: 9px;
   color: var(--muted);
 }
-.about-intro {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 80px;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 45px;
-  margin-bottom: 40px;
-}
-.about-intro p {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.9;
-}
-.about-intro h2 {
-  font-family: var(--serif);
-  font-size: 34px;
-  font-weight: 400;
-  letter-spacing: -1px;
-  margin: 0;
-}
-.principles {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 35px;
-  padding-bottom: 50px;
-}
-.principle {
-  border-top: 1px solid var(--line);
-  padding-top: 19px;
-}
-.principle > span {
-  font-size: 10px;
-  color: #8b9384;
-}
-.principle h3 {
-  font-size: 18px;
-  letter-spacing: -0.5px;
-  font-weight: 500;
-  margin: 23px 0 12px;
-}
-.principle p {
-  font-size: 12px;
-  line-height: 1.8;
-  color: var(--muted);
-}
-.project-meta {
-  border-top: 1px solid var(--line);
-  padding: 25px 0 50px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 25px;
-  color: var(--muted);
-  font-size: 11px;
-}
-.lab-details {
-  border: 1px solid var(--line);
-  padding: 22px 25px;
-  border-radius: 3px;
-  margin-bottom: 60px;
-  background: #f0f2eb;
-}
-.lab-details summary {
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
-  font-weight: 500;
-  list-style: none;
-}
-.lab-details summary span {
-  font-size: 9px;
-  font-weight: 400;
-  color: var(--muted);
-}
-.lab-details p {
-  font-size: 11px;
-  line-height: 1.8;
-  color: var(--muted);
-  max-width: 650px;
-}
-.lab-result {
-  font-family: monospace;
-  color: var(--green);
-  font-size: 11px;
-  white-space: pre-wrap;
-  line-height: 1.8;
-}
-.lab-details button {
-  width: auto;
-  display: inline-flex;
-  padding: 11px 17px;
-  margin-top: 5px;
-}
 .notifications {
   position: fixed;
   bottom: 24px;
@@ -1281,9 +1164,6 @@ img {
   .wrap {
     padding-left: 28px;
     padding-right: 28px;
-  }
-  .account-caption {
-    display: none;
   }
   .hero h1 {
     font-size: 60px;
@@ -1594,44 +1474,6 @@ img {
     font-size: 7px;
     padding: 4px 6px;
   }
-  .about-intro {
-    grid-template-columns: 1fr;
-    gap: 15px;
-    padding-bottom: 25px;
-    margin-bottom: 25px;
-  }
-  .about-intro h2 {
-    font-size: 28px;
-  }
-  .about-intro p {
-    font-size: 12px;
-  }
-  .principles {
-    grid-template-columns: 1fr;
-    gap: 20px;
-    padding-bottom: 25px;
-  }
-  .principle h3 {
-    margin-top: 15px;
-  }
-  .project-meta {
-    flex-wrap: wrap;
-    padding-bottom: 30px;
-    font-size: 10px;
-  }
-  .lab-details {
-    padding: 20px;
-  }
-  .lab-details summary {
-    align-items: flex-start;
-    gap: 12px;
-  }
-  .lab-details summary span {
-    max-width: 100px;
-    text-align: right;
-    line-height: 1.6;
-    font-size: 8px;
-  }
   .confirmation-dialog {
     padding: 30px;
   }
@@ -1665,4 +1507,84 @@ img {
   background: var(--green);
   color: #fff;
   border-color: var(--green);
+}
+.account-login {
+  background: none;
+  border: 0;
+  padding: 10px 2px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.account-signup {
+  background: var(--green);
+  color: white;
+  border: 1px solid var(--green);
+  padding: 10px 15px;
+  font-size: 11px;
+  border-radius: 3px;
+}
+.signed-in-name {
+  font-size: 12px;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-welcome {
+  min-height: 55vh;
+  max-width: 550px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 80px 0;
+}
+.account-welcome .eyebrow {
+  justify-content: center;
+}
+.account-welcome h1 {
+  font-family: var(--serif);
+  font-size: 52px;
+  font-weight: 400;
+  letter-spacing: -2px;
+  margin: 20px 0;
+}
+.account-welcome p {
+  font-size: 14px;
+  line-height: 1.9;
+  color: var(--muted);
+}
+.account-welcome-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 25px;
+}
+.account-welcome-actions .primary-button {
+  width: auto;
+  margin: 0;
+  min-width: 130px;
+}
+.inline-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: inherit;
+  color: var(--green);
+}
+@media (max-width: 760px) {
+  .account-signup {
+    font-size: 10px;
+    padding: 9px 11px;
+  }
+  .header-account {
+    gap: 15px;
+  }
+  .account-welcome {
+    padding: 65px 0;
+  }
+  .account-welcome h1 {
+    font-size: 43px;
+  }
 }

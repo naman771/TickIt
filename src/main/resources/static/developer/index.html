@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>TickIt / Developer workspace</title>
+    <link rel="icon" href="/images/favicon.svg" />
+    <link rel="stylesheet" href="/developer/portal.css" />
+    <script defer src="/js/auth.js"></script>
+    <script defer src="/developer/portal.js"></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a class="wordmark" href="/developer/"
+        >tickit<span>.</span><small>DEVELOPERS</small></a
+      >
+      <div class="workspace-label">WORKSPACE</div>
+      <nav>
+        <button class="selected" data-section="overview">Overview</button
+        ><button data-section="authentication">Authentication</button
+        ><button data-section="payments">Payments</button
+        ><button data-section="email">Email delivery</button>
+      </nav>
+      <div class="sidebar-foot">
+        Restricted workspace<br />Authorized accounts only
+      </div>
+    </aside>
+    <div class="main">
+      <header>
+        <div>
+          <span class="breadcrumb">Workspace /</span>
+          <span id="pageLabel">Overview</span>
+        </div>
+        <div id="portalAccount">
+          <button data-auth="sign-in">Sign in</button>
+        </div>
+      </header>
+      <main id="portalContent">
+        <section class="access-panel">
+          <div class="eyebrow">DEVELOPER WORKSPACE</div>
+          <h1>The view behind<br />the experience.</h1>
+          <p>
+            Integration status and operational diagnostics for the TickIt
+            platform.
+          </p>
+          <div class="access-rule">
+            Sign in with an authorized developer account to continue.
+          </div>
+          <button class="button" data-auth="sign-in">
+            Sign in to workspace <span>↗</span>
+          </button>
+          <p class="access-message" id="accessMessage" aria-live="polite"></p>
+        </section>
+      </main>
+      <footer>
+        TickIt Developer Workspace
+        <span>Identity verified. Access controlled.</span>
+      </footer>
+    </div>
+  </body>
+</html>
