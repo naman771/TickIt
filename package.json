@@ -1,0 +1,18 @@
+{
+  "dependencies": {
+    "@neon/config": "^1.9.3",
+    "@neon/env": "^1.6.4"
+  },
+  "name": "tickit-infrastructure",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Neon infrastructure tooling for the TickIt Spring Boot application",
+  "scripts": {
+    "build": "mvn -B package -DskipTests",
+    "test": "mvn -B verify",
+    "start": "node scripts/start-neon.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

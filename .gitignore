@@ -34,3 +34,10 @@ scratch/
 .env.*
 !.env.example
 *.pid
+.neon
+node_modules/
+
+# Locally installed agent tooling
+.agents/skills/
+.codex/config.toml
+skills-lock.json
