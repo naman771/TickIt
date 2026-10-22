@@ -122,7 +122,7 @@ mvn test -Dtest=BookingConcurrencyTest
 
 `TEST_DATABASE_URL` overrides the test database connection. CI provisions PostgreSQL and Redis service containers, runs the suite, validates the Compose file, and builds the Docker image.
 
-The verified suite contains **18 tests**, including Redis hold ownership, token refill, REST validation, transaction rollback, notification failure, hold expiration, and direct competing database inserts. The 50-thread test checks **1 success, 49 rejected attempts, and exactly 1 database row**. See [validation details](docs/VALIDATION.md).
+The verified suite contains **19 tests**, including Redis hold ownership, token refill, REST validation, transaction rollback, notification failure, hold expiration, and direct competing database inserts. The 50-thread test checks **1 success, 49 rejected attempts, and exactly 1 database row**. See [validation details](docs/VALIDATION.md).
 
 With the app running, demonstrate HTTP contention:
 

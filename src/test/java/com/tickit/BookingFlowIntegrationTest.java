@@ -92,4 +92,11 @@ class BookingFlowIntegrationTest {
         mockMvc.perform(delete("/api/holds/1/99999"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void shouldReportHealthyWithoutOptionalSmtp() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("UP")));
+    }
 }

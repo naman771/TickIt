@@ -7,7 +7,7 @@ Validated on **23 October 2026** with Java 21, PostgreSQL 18.6, and local Redis.
 Command: `DB_USER=<local-postgres-user> mvn -B verify`
 
 ```text
-Tests run: 18, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 19, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -15,7 +15,7 @@ BUILD SUCCESS
 |---|---:|---|
 | SeatHoldServiceTest | 3 | Acquisition, exclusion, same-owner retries, release |
 | RateLimiterServiceTest | 3 | Capacity, rejection, refill |
-| BookingFlowIntegrationTest | 6 | Events, seat map, booked-seat conflict, missing hold, mismatched event, required release owner |
+| BookingFlowIntegrationTest | 7 | Events, seat map, booked-seat conflict, missing hold, mismatched event, required release owner, health without SMTP |
 | BookingConcurrencyTest | 1 | 50 concurrent contenders; one booking and one database row |
 | BookingSafetyTest | 5 | Rollback, notification outage, owner-only release, expiration broadcast, database uniqueness without Redis |
 
