@@ -6,7 +6,6 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-import tools.jackson.databind.ObjectMapper;
 import com.tickit.dto.OrganizerEventRequest;
 import com.tickit.model.*;
 import com.tickit.repository.*;
@@ -17,13 +16,14 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest(
     properties = {
@@ -224,13 +224,14 @@ class OrganizerFlowTest {
   }
 
   @Test
-  void publishedLayoutIsImmutableAndOtherEventIsIndependent() {
+  void publishedEditsPreserveSeatIdentityAndOtherEventsAreIndependent() {
     var first = publish(payload("SEATED"));
-    var p = payload("SEATED");
+    var p = new LinkedHashMap<String, Object>(first);
     p.put("version", first.get("version"));
-    assertThatThrownBy(() -> organizer.save(id(first), request(p)))
-        .isInstanceOf(ResponseStatusException.class)
-        .hasMessageContaining("409");
+    var oldIds = seats.findByVenueEventId(id(first)).stream().map(Seat::getId).toList();
+    organizer.save(id(first), request(p));
+    assertThat(seats.findByVenueEventId(id(first)).stream().map(Seat::getId).toList())
+        .isEqualTo(oldIds);
     var second = payload("SEATED");
     second.put("seats", List.of(seat("Different", 3, 600, 500)));
     var d = publish(second);
@@ -571,5 +572,174 @@ class OrganizerFlowTest {
       for (var row : rows) seatHolds.releaseHold(event, row.getId());
       jdbc.update("UPDATE admission_hold SET released=true WHERE event_id=?", event);
     }
+  }
+
+  @Test
+  void publishedBulkEditCanUpdateMoreThanThreeSeatsAndRetireUnsoldPositions() throws Exception {
+    var p = payload("SEATED");
+    var layout = new ArrayList<Map<String, Object>>();
+    for (int n = 1; n <= 8; n++) layout.add(seat("Main", n, 40 + n * 30, 150));
+    p.put("seats", layout);
+    var published = publish(p);
+    Long event = id(published);
+    var old = seats.findByVenueEventId(event);
+    var update = new LinkedHashMap<String, Object>(published);
+    update.put(
+        "seats",
+        old.subList(0, 7).stream()
+            .map(
+                s ->
+                    new OrganizerEventRequest.SeatInput(
+                        s.getId(),
+                        s.getSection(),
+                        s.getSeatRow(),
+                        s.getSeatNumber(),
+                        s.getX(),
+                        s.getY() + 50,
+                        new java.math.BigDecimal("825.50")))
+            .toList());
+    organizer.save(event, request(update));
+    var saved = seats.findByVenueEventId(event);
+    assertThat(saved).hasSize(7);
+    assertThat(saved.stream().map(Seat::getId).toList())
+        .containsExactlyElementsOf(old.subList(0, 7).stream().map(Seat::getId).toList());
+    assertThat(saved)
+        .allSatisfy(
+            s -> {
+              assertThat(s.getY()).isEqualTo(200);
+              assertThat(s.getPrice()).isEqualByComparingTo("825.50");
+            });
+    assertThat(seats.findById(old.get(7).getId()).orElseThrow().isRetired()).isTrue();
+    mvc.perform(get("/api/events/" + event + "/seats"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(7));
+  }
+
+  @Test
+  void bookedSeatsCannotBeRemovedOrRelabelledAndStaleEditsFail() {
+    var published = publish(payload("SEATED"));
+    Long event = id(published);
+    var old = seats.findByVenueEventId(event);
+    jdbc.update(
+        "INSERT INTO booking(seat_id,event_id,user_id,status) VALUES(?,?,?,'CONFIRMED')",
+        old.get(0).getId(),
+        event,
+        owner.getId());
+    var update = new LinkedHashMap<String, Object>(published);
+    update.put(
+        "seats",
+        List.of(
+            new OrganizerEventRequest.SeatInput(
+                old.get(1).getId(), "Main", "A", 2, 108, 130, new java.math.BigDecimal("500"))));
+    assertThatThrownBy(() -> organizer.save(event, request(update)))
+        .hasMessageContaining("Booked seats cannot be deleted");
+    var renamed = new ArrayList<OrganizerEventRequest.SeatInput>();
+    for (var seat : old)
+      renamed.add(
+          new OrganizerEventRequest.SeatInput(
+              seat.getId(),
+              seat.getSection(),
+              seat == old.get(0) ? "Z" : seat.getSeatRow(),
+              seat.getSeatNumber(),
+              seat.getX(),
+              seat.getY(),
+              seat.getPrice()));
+    update.put("seats", renamed);
+    assertThatThrownBy(() -> organizer.save(event, request(update)))
+        .hasMessageContaining("Booked seat labels cannot change");
+    var stale = new LinkedHashMap<String, Object>(published);
+    stale.put("version", -1);
+    assertThatThrownBy(() -> organizer.save(event, request(stale)))
+        .hasMessageContaining("changed in another tab");
+  }
+
+  @Test
+  void activeHoldsBlockSeatEditingButAllowReschedulingUnchangedInventory() {
+    var published = publish(payload("MIXED"));
+    Long event = id(published);
+    var row = seats.findByVenueEventId(event).get(0);
+    seatHoldForManagement(event, row.getId());
+    var update = new LinkedHashMap<String, Object>(published);
+    update.put("name", "Updated title");
+    assertThatThrownBy(() -> organizer.save(event, request(update)))
+        .hasMessageContaining("active reservations");
+    update.put("startTime", LocalDateTime.now().plusDays(10).withNano(0));
+    update.put("endTime", LocalDateTime.now().plusDays(10).plusHours(2).withNano(0));
+    update.put("changeReason", "Venue requested a later date");
+    var changed = organizer.save(event, request(update));
+    assertThat(changed.get("scheduleChanged")).isEqualTo(true);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM event_change WHERE event_id=? AND action='RESCHEDULED'",
+                Integer.class,
+                event))
+        .isEqualTo(1);
+  }
+
+  void seatHoldForManagement(Long event, Long seat) {
+    mvcHoldHelper(event, seat);
+  }
+
+  void mvcHoldHelper(Long event, Long seat) {
+    try {
+      mvc.perform(
+              post("/api/holds")
+                  .with(jwt())
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{\"eventId\":" + event + ",\"seatId\":" + seat + "}"))
+          .andExpect(status().isOk());
+    } catch (Exception e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  @Test
+  void eventDeletionAndCancellationAreOwnerOnlyAndRemovePublicInventory() throws Exception {
+    var draft = save(payload("SEATED"));
+    Long draftId = id(draft);
+    organizer.remove(draftId, ((Number) draft.get("version")).longValue(), "Draft abandoned", true);
+    assertThat(events.findById(draftId).orElseThrow().getPublicationStatus()).isEqualTo("DELETED");
+    assertThatThrownBy(() -> organizer.get(draftId)).hasMessageContaining("404");
+    var published = publish(payload("GENERAL"));
+    Long event = id(published);
+    when(current.resolve(any())).thenReturn(other);
+    organizer.enroll("Other organizer");
+    assertThatThrownBy(
+            () ->
+                organizer.remove(
+                    event, ((Number) published.get("version")).longValue(), "Not mine", false))
+        .hasMessageContaining("404");
+    when(current.resolve(any())).thenReturn(owner);
+    var cancelled =
+        organizer.remove(
+            event, ((Number) published.get("version")).longValue(), "Venue unavailable", false);
+    assertThat(cancelled.get("status")).isEqualTo("CANCELLED");
+    mvc.perform(get("/api/events/" + event)).andExpect(status().isNotFound());
+    mvc.perform(get("/api/events/" + event + "/admission")).andExpect(status().isNotFound());
+    assertThatThrownBy(
+            () -> organizer.publish(event, ((Number) cancelled.get("version")).longValue()))
+        .hasMessageContaining("already published");
+  }
+
+  @Test
+  void dateChangesRequireAReasonAndSupportMovingEarlierAndLater() {
+    var published = publish(payload("SEATED"));
+    Long event = id(published);
+    var update = new LinkedHashMap<String, Object>(published);
+    update.put("startTime", LocalDateTime.now().plusDays(3).withNano(0));
+    update.put("endTime", null);
+    assertThatThrownBy(() -> organizer.save(event, request(update)))
+        .hasMessageContaining("Explain the date");
+    update.put("changeReason", "Earlier slot at the venue");
+    var earlier = organizer.save(event, request(update));
+    var later = new LinkedHashMap<String, Object>(earlier);
+    later.put("startTime", LocalDateTime.now().plusDays(12).withNano(0));
+    later.put("changeReason", "Artist availability changed");
+    var finalEvent = organizer.save(event, request(later));
+    assertThat(finalEvent.get("status")).isEqualTo("PUBLISHED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM event_change WHERE event_id=?", Integer.class, event))
+        .isEqualTo(2);
   }
 }

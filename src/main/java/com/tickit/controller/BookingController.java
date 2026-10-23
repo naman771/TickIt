@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.*;
 public class BookingController {
 
   private final BookingService bookingService;
+  private final com.tickit.service.EventSnapshots eventSnapshots;
   private final com.tickit.repository.EventRepository events;
   private final com.tickit.repository.AdmissionHoldRepository admissionHolds;
   private final com.tickit.service.CurrentUserService currentUser;
@@ -54,6 +55,7 @@ public class BookingController {
         seatRepository
             .findById(seatId)
             .orElseThrow(() -> new IllegalArgumentException("Seat not found"));
+    if (seat.isRetired()) throw new IllegalArgumentException("Seat is no longer available");
     if (!seat.getVenue().getEvent().getId().equals(eventId)) {
       throw new IllegalArgumentException("Seat does not belong to this event");
     }
@@ -189,6 +191,7 @@ public class BookingController {
                 b ->
                     BookingResponse.builder()
                         .bookingId(b.getId())
+                        .event(eventSnapshots.get(b.getEvent().getId()))
                         .eventId(b.getEvent().getId())
                         .seatId(b.getSeat().getId())
                         .seatLabel(b.getSeat().displayLabel())

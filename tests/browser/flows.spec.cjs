@@ -14,6 +14,7 @@ const common = {
   category: "COMMUNITY",
   currency: "INR",
   perOrderLimit: 3,
+  version: 0,
   minimumAge: 18,
   stageX: 400,
   stageY: 20,
@@ -50,7 +51,9 @@ async function fixture(page) {
       body: 'window.TICKIT_API_BASE="";',
     }),
   );
-  page.on("dialog", (d) => d.accept());
+  page.on("dialog", (d) =>
+    d.type() === "prompt" ? d.accept("Fixture event update") : d.accept(),
+  );
   return errors;
 }
 async function customer(page, mode = "SEATED", limit = 3) {
@@ -64,6 +67,16 @@ async function customer(page, mode = "SEATED", limit = 3) {
         json: [
           { ...common, id: 901, admissionMode: mode, perOrderLimit: limit },
         ],
+      });
+    if (p === "/api/events/901")
+      return r.fulfill({
+        json: {
+          ...common,
+          id: 901,
+          status: "PUBLISHED",
+          admissionMode: mode,
+          perOrderLimit: limit,
+        },
       });
     if (p.endsWith("/seats"))
       return r.fulfill({ json: mode === "GENERAL" ? [] : rows });
@@ -216,12 +229,12 @@ test("organizer selection, bulk price, preview immutability and CSV validation",
   await page.locator('[data-tool="select"]').click();
   for (let n = 0; n < 4; n++)
     await page.locator("#layoutMap .map-seat").nth(n).click();
-  await expect(page.locator('#layoutMap [aria-pressed="true"]')).toHaveCount(3);
+  await expect(page.locator('#layoutMap [aria-pressed="true"]')).toHaveCount(4);
   await page.locator("#selectedPrice").fill("750");
   await page.locator("[data-price-selected]").click();
   await expect(
     page.locator("#layoutMap title").filter({ hasText: "750" }),
-  ).toHaveCount(3);
+  ).toHaveCount(4);
   const before = await page.locator("#layoutMap").innerHTML();
   await page.locator("[data-preview]").click();
   await page.locator("#preview .map-seat").first().focus();
@@ -617,4 +630,191 @@ test("account history can recover a pending checkout without creating another or
   ).toBeEnabled();
   expect(f.calls.filter((c) => c.path.endsWith("/orders"))).toHaveLength(1);
   expect(f.errors).toEqual([]);
+});
+
+async function publishedOrganizer(page) {
+  const errors = await fixture(page);
+  let submitted,
+    actions = [];
+  let event = {
+    ...common,
+    id: 77,
+    status: "PUBLISHED",
+    version: 0,
+    address: "12 Park Road",
+    guestCapacity: 30,
+    admissionMode: "SEATED",
+    imageUrl: "",
+    salesStart: null,
+    salesEnd: null,
+    endTime: null,
+    pools: [],
+    bookedSeatIds: [],
+    seats: Array.from({ length: 8 }, (_, i) => ({
+      id: 500 + i,
+      section: "Main",
+      row: "A",
+      number: i + 1,
+      x: 80 + i * 30,
+      y: 160,
+      price: 500,
+    })),
+  };
+  await page.route("**/api/**", async (r) => {
+    const path = new URL(r.request().url()).pathname,
+      method = r.request().method();
+    if (path.endsWith("/profile"))
+      return r.fulfill({ json: { id: 101, displayName: "Fixture organizer" } });
+    if (path === "/api/organizer/events")
+      return r.fulfill({ json: event.status === "DELETED" ? [] : [event] });
+    if (path.endsWith("/cancel")) {
+      actions.push("cancel");
+      event = { ...event, status: "CANCELLED", version: event.version + 1 };
+      return r.fulfill({ json: event });
+    }
+    if (method === "DELETE") {
+      actions.push("delete");
+      event = { ...event, status: "DELETED" };
+      return r.fulfill({ json: event });
+    }
+    if (method === "PUT") {
+      submitted = r.request().postDataJSON();
+      event = {
+        ...event,
+        ...submitted,
+        status: "PUBLISHED",
+        version: event.version + 1,
+      };
+      return r.fulfill({ json: event });
+    }
+    return r.fulfill({ json: event });
+  });
+  await page.goto("/organizer/#event/77");
+  await expect(
+    page.getByRole("button", { name: "Save changes", exact: true }),
+  ).toBeVisible();
+  return { errors, submitted: () => submitted, actions };
+}
+
+test("published organizer can select all eight seats, move them together and save shared prices", async ({
+  page,
+}) => {
+  const f = await publishedOrganizer(page);
+  await page
+    .getByRole("button", { name: "Select all seats", exact: true })
+    .click();
+  await expect(page.locator('#layoutMap [aria-pressed="true"]')).toHaveCount(8);
+  await page.locator("#selectedPrice").fill("925");
+  await page.locator("[data-price-selected]").click();
+  await expect(
+    page.locator("#layoutMap title").filter({ hasText: "925" }),
+  ).toHaveCount(8);
+  await page.locator('[data-tool="move"]').click();
+  const before = await page
+    .locator("#layoutMap .map-seat rect")
+    .first()
+    .getAttribute("x");
+  const box = await page
+    .locator("#layoutMap .map-seat rect")
+    .first()
+    .boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    box.x + box.width / 2 + 25,
+    box.y + box.height / 2 + 25,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  await expect(
+    page.locator("#layoutMap .map-seat rect").first(),
+  ).not.toHaveAttribute("x", before);
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect.poll(() => f.submitted()?.seats.length).toBe(8);
+  expect(
+    f.submitted().seats.every((s) => s.price === 925 && s.id != null),
+  ).toBe(true);
+  expect(
+    new Set(f.submitted().seats.map((s) => s.x - (80 + (s.number - 1) * 30)))
+      .size,
+  ).toBe(1);
+  expect(f.errors).toEqual([]);
+});
+
+test("organizer bulk removal and published schedule change reach the save API", async ({
+  page,
+}) => {
+  const f = await publishedOrganizer(page);
+  await page.locator('[data-tool="select"]').click();
+  for (let i = 0; i < 4; i++)
+    await page.locator("#layoutMap .map-seat").nth(i).click();
+  await page.locator("[data-remove-selected]").click();
+  await expect(page.locator("#layoutMap .map-seat")).toHaveCount(4);
+  await page.locator('[name="startTime"]').fill("2099-05-01T19:00");
+  await page.locator('[name="changeReason"]').fill("Earlier venue booking");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect.poll(() => f.submitted()?.seats.length).toBe(4);
+  expect(f.submitted().changeReason).toBe("Earlier venue booking");
+  expect(f.submitted().startTime).toBe("2099-05-01T19:00");
+  expect(f.errors).toEqual([]);
+});
+
+test("organizer can cancel an event and then delete it from the workspace", async ({
+  page,
+}) => {
+  const f = await publishedOrganizer(page);
+  await page.getByRole("button", { name: "Cancel event", exact: true }).click();
+  await expect(page.locator(".page-head .badge")).toHaveText("CANCELLED");
+  await expect(page.locator('[name="name"]')).toBeDisabled();
+  await page.getByRole("button", { name: "Delete event", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Your first event starts here." }),
+  ).toBeVisible();
+  expect(f.actions).toEqual(["cancel", "delete"]);
+  expect(f.errors).toEqual([]);
+});
+
+test("cancelled paid event remains visible in My tickets after removal from public catalog", async ({
+  page,
+}) => {
+  const errors = await fixture(page);
+  await page.route("**/api/**", (r) => {
+    const path = new URL(r.request().url()).pathname;
+    if (path === "/api/events" || path === "/api/bookings/me")
+      return r.fulfill({ json: [] });
+    if (path === "/api/payments/orders/me")
+      return r.fulfill({
+        json: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            eventId: 901,
+            status: "CONFIRMED",
+            amount: 50000,
+            currency: "INR",
+            event: {
+              ...common,
+              id: 901,
+              status: "CANCELLED",
+              changeNote: "Venue unavailable",
+            },
+            items: [
+              {
+                seatId: 8001,
+                label: "Main · A1",
+                quantity: 1,
+                unitAmount: 50000,
+              },
+            ],
+          },
+        ],
+      });
+    return r.fulfill({ status: 404, json: { error: "Unknown fixture route" } });
+  });
+  await page.goto("/#tickets");
+  await expect(page.locator(".ticket-card")).toHaveCount(1);
+  await expect(page.locator(".ticket-card .status-badge")).toHaveText(
+    "CANCELLED · REFUND PENDING",
+  );
+  await expect(page.locator(".ticket-card")).toContainText("Venue unavailable");
+  expect(errors).toEqual([]);
 });

@@ -19,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Slf4j
 public class CheckoutService {
   private final PaymentSettings settings;
+  private final EventSnapshots eventSnapshots;
   private final CheckoutStore store;
   private final org.springframework.jdbc.core.JdbcTemplate jdbc;
   private final RazorpayGateway gateway;
@@ -73,6 +74,8 @@ public class CheckoutService {
               var event = events.findById(request.eventId()).orElseThrow();
               if (!"PUBLISHED".equals(event.getPublicationStatus()))
                 throw error(404, "Event not found");
+              if (!Objects.equals(request.eventVersion(), event.getLayoutVersion()))
+                throw error(409, "Event details changed. Refresh before checkout");
               EventSales.requireOpen(event);
               EventSales.requireAge(event, request.attendeeAge());
               int quantity = request.seatIds().size() + request.quantity();
@@ -123,6 +126,7 @@ public class CheckoutService {
                 throw error(409, "Your per-event reservation limit has been reached");
               for (Long seatId : request.seatIds().stream().sorted().toList()) {
                 var seat = seats.findById(seatId).orElseThrow(() -> error(400, "Seat not found"));
+                if (seat.isRetired()) throw error(409, "Seat is no longer available");
                 if (!seat.getVenue().getEvent().getId().equals(event.getId()))
                   throw error(400, "Seat does not belong to this event");
                 if (bookings.existsBySeatIdAndEventId(seatId, event.getId()))
@@ -200,8 +204,8 @@ public class CheckoutService {
                     409, "Your reservation is about to expire. Release it and choose again");
               jdbc.update(
                   "INSERT INTO"
-                      + " checkout_order(id,user_id,event_id,idempotency_key,request_fingerprint,status,amount,currency,admission_hold_id,expires_at)"
-                      + " VALUES(?,?,?,?,?,'CREATING',?,'INR',?,?)",
+                      + " checkout_order(id,user_id,event_id,idempotency_key,request_fingerprint,status,amount,currency,admission_hold_id,expires_at,event_revision)"
+                      + " VALUES(?,?,?,?,?,'CREATING',?,'INR',?,?,?)",
                   id,
                   user.getId(),
                   event.getId(),
@@ -209,7 +213,8 @@ public class CheckoutService {
                   request.fingerprint(),
                   amount,
                   admissionId,
-                  java.sql.Timestamp.from(deadline));
+                  java.sql.Timestamp.from(deadline),
+                  event.getLayoutVersion());
               for (var item : items)
                 jdbc.update(
                     "INSERT INTO"
@@ -368,12 +373,16 @@ public class CheckoutService {
           long quantity = items.stream().mapToLong(CheckoutStore.Item::quantity).sum();
           var event = events.findById(order.eventId()).orElseThrow();
           available &=
+              "PUBLISHED".equals(event.getPublicationStatus())
+                  && order.eventRevision() == event.getLayoutVersion();
+          available &=
               bookings.countAllTickets(order.userId(), order.eventId()) + quantity
                   <= Math.min(3, event.getPerOrderLimit());
           for (var item : items) {
             if (item.seatId() != null)
               available &=
-                  !bookings.existsBySeatIdAndEventId(item.seatId(), order.eventId())
+                  !seats.findById(item.seatId()).orElseThrow().isRetired()
+                      && !bookings.existsBySeatIdAndEventId(item.seatId(), order.eventId())
                       && holds.isCheckoutHoldValid(
                           order.eventId(), item.seatId(), order.userId(), order.id());
             else {
@@ -419,6 +428,16 @@ public class CheckoutService {
           store.status(id, "CONFIRMED", payment.id());
           afterCommitRelease(order, items, true);
         });
+  }
+
+  /** Caller owns the event row lock; no customer identity is impersonated. */
+  public void invalidateForEvent(long eventId) {
+    for (var order : store.pendingForEvent(eventId)) {
+      store.status(order.id(), "EXPIRED", null);
+      afterCommitRelease(order, store.items(order.id()), false);
+    }
+    jdbc.update(
+        "UPDATE admission_hold SET released=true WHERE event_id=? AND NOT released", eventId);
   }
 
   private void afterCommitRelease(
@@ -478,6 +497,7 @@ public class CheckoutService {
             : order.status();
     result.put("id", order.id());
     result.put("eventId", order.eventId());
+    result.put("event", eventSnapshots.get(order.eventId()));
     result.put("status", status);
     result.put("amount", order.amount());
     result.put("currency", order.currency());

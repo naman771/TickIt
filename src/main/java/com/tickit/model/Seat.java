@@ -5,10 +5,7 @@ import java.math.BigDecimal;
 import lombok.*;
 
 @Entity
-@Table(
-    name = "seat",
-    uniqueConstraints =
-        @UniqueConstraint(columnNames = {"venue_id", "section_code", "seat_row", "seat_number"}))
+@Table(name = "seat")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -32,6 +29,8 @@ public class Seat {
   @Builder.Default
   @Column(name = "section_code", nullable = false, length = 40)
   private String section = "Main";
+
+  @Builder.Default private boolean retired = false;
 
   @Column(name = "map_x")
   private Integer x;

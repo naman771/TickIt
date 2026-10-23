@@ -97,6 +97,12 @@ public class Event {
   @Column(name = "stage_y", nullable = false)
   private int stageY = 20;
 
+  @Column(name = "change_note", length = 1000)
+  private String changeNote;
+
+  @Column(name = "schedule_changed_at")
+  private java.time.Instant scheduleChangedAt;
+
   @Version
   @Column(name = "layout_version", nullable = false)
   private Long layoutVersion;

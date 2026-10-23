@@ -329,6 +329,16 @@ async function refreshSeats() {
   const eventId = state.event?.id;
   if (!eventId || state.view !== "booking") return;
   try {
+    const latest = await api(`/api/events/${eventId}`);
+    if (state.event?.id !== eventId || state.view !== "booking") return;
+    const changed =
+      latest.version != null && latest.version !== state.event.version;
+    if (latest.id) {
+      state.event = { ...state.event, ...latest };
+      state.events = state.events.map((e) =>
+        e.id === eventId ? state.event : e,
+      );
+    }
     const seats = await api(`/api/events/${eventId}/seats`);
     if (state.event?.id !== eventId || state.view !== "booking") return;
     state.seats = seats;
@@ -346,9 +356,20 @@ async function refreshSeats() {
     state.selectedSeats = state.selectedSeats.filter((id) =>
       seats.some((s) => s.seatId === id && (s.status === "FREE" || owns(s))),
     );
-    renderSeatMap();
-    renderCheckout();
-  } catch {
+    if (changed) renderBooking();
+    else {
+      renderSeatMap();
+      renderCheckout();
+    }
+  } catch (error) {
+    if (error.status === 404 && state.event?.id === eventId) {
+      state.selectedSeats = [];
+      renderError(
+        new Error(
+          "This event is no longer available for booking. Check My tickets for existing reservations.",
+        ),
+      );
+    }
     /* Keep the current map during a transient outage. */
   }
 }
@@ -401,6 +422,7 @@ async function renderTickets(sequence) {
         o.items.map((i, n) => ({
           bookingId: `${o.id.slice(0, 8)}-${n + 1}`,
           eventId: o.eventId,
+          event: o.event,
           seatLabel: `${i.label}${i.quantity > 1 ? ` × ${i.quantity}` : ""}`,
           status: o.status,
         })),
@@ -413,9 +435,9 @@ async function renderTickets(sequence) {
             .slice()
             .reverse()
             .map((t) => {
-              const e = state.events.find((e) => e.id === t.eventId);
+              const e = t.event || state.events.find((e) => e.id === t.eventId);
               return e
-                ? `<article class="ticket-card"><img src="${esc(photo(e))}" alt=""><div class="ticket-body"><div class="ticket-top"><span>TK-${String(t.bookingId).padStart(6, "0")}</span><b class="status-badge">CONFIRMED</b></div><h2>${esc(shortName(e))} · ${esc(tour(e))}</h2><div class="meta-line"><span>${icon("calendar")}${esc(day(e.startInstant || e.startTime, e.timezone))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div><div class="ticket-stub"><span>YOUR SEAT</span><strong>${esc(t.seatLabel)}</strong><small>Reserved admission</small></div></article>`
+                ? `<article class="ticket-card"><img src="${esc(photo(e))}" alt=""><div class="ticket-body"><div class="ticket-top"><span>TK-${String(t.bookingId).padStart(6, "0")}</span><b class="status-badge">${["CANCELLED", "DELETED"].includes(e.status) ? "CANCELLED · REFUND PENDING" : e.scheduleChanged ? "RESCHEDULED" : "CONFIRMED"}</b></div><h2>${esc(shortName(e))} · ${esc(tour(e))}</h2>${e.changeNote ? `<p>${esc(e.changeNote)}</p>` : ""}<div class="meta-line"><span>${icon("calendar")}${esc(day(e.startInstant || e.startTime, e.timezone))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div><div class="ticket-stub"><span>YOUR SEAT</span><strong>${esc(t.seatLabel)}</strong><small>Reserved admission</small></div></article>`
                 : "";
             })
             .join("")
@@ -820,6 +842,7 @@ async function startPayment() {
   const userId = state.user.id;
   const intent = {
     eventId: state.event.id,
+    eventVersion: state.event.version,
     seatIds: admissionSelection
       ? []
       : [...state.selectedSeats].sort((a, b) => a - b),
@@ -875,6 +898,17 @@ async function openPayment(fromCreate = false) {
   state.busy = true;
   renderCheckout();
   try {
+    const latest = await api(`/api/payments/orders/${order.id}`);
+    if (state.user?.id !== userId) return;
+    state.checkout = latest;
+    savePayment();
+    if (
+      latest.status !== "PENDING" ||
+      (latest.event && latest.event.status !== "PUBLISHED")
+    )
+      throw new Error(
+        "This checkout changed or expired. Check its status before paying.",
+      );
     await loadRazorpay();
     if (state.user?.id !== userId) return;
     if (new Date(order.expiresAt).getTime() <= Date.now())

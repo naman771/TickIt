@@ -50,9 +50,9 @@ Prefer running Java locally? See [local development and configuration](docs/DEVE
 
 ## Verification
 
-**123 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
+**132 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
 
-Thirty Playwright checks cover desktop/mobile customer, organizer and developer behavior and run in CI. [Bug audit and coverage limits →](docs/BUG_AUDIT.md)
+Thirty-eight Playwright checks cover desktop/mobile customer, organizer and developer behavior and run in CI. [Bug audit and coverage limits →](docs/BUG_AUDIT.md)
 
 An additional opt-in live Neon test verifies database reads and private storage upload, listing, download integrity, anonymous denial and deletion. CI runs the local suite against PostgreSQL and Redis, validates Docker Compose, and builds the container. [Validation details →](docs/VALIDATION.md)
 
@@ -66,15 +66,15 @@ DB_USER="$(whoami)" mvn verify
 
 ## Payment checkout
 
-Razorpay **test-mode** orders, verified captured payments, signed webhooks and reconciliation are implemented for INR events. Assigned seats and standing admission confirm atomically. Payments remain disabled until a test account is connected; live keys are rejected. Late payments enter a review queue rather than assigning unavailable tickets. Refund automation and QR ticket issuance are separate work. [Setup and verification →](docs/PAYMENTS.md)
+Razorpay **test-mode** orders, verified captured payments, signed webhooks and reconciliation are implemented for INR events. Assigned seats and standing admission confirm atomically. The hosted environment is connected to a test account; live keys are rejected. Local checkout stays disabled unless explicitly configured. Late payments enter a review queue rather than assigning unavailable tickets. Refund automation and QR ticket issuance are separate work. [Setup and verification →](docs/PAYMENTS.md)
 
 ## Accounts and deployment
 
 Customer signup and Google sign-in use Clerk. The API verifies signed sessions and isolates each account's bookings. A separate [developer workspace](docs/PRODUCTION_SETUP.md#developer-workspace) uses a server-side access allowlist.
 
-The [organizer workspace](docs/ORGANIZERS.md) manages private event drafts, custom seat layouts and standing-admission ticket pools. Organizers publish their own events to the customer catalog; each event retains its own layout and prices. [See the organizer workspace →](docs/images/tickit-organizers.png)
+The [organizer workspace](docs/ORGANIZERS.md) manages private event drafts, custom seat layouts and standing-admission ticket pools. Organizers publish their own events to the customer catalog; each event retains its own layout and prices. Organizers can bulk edit seats, reschedule, cancel or archive an event while preserving paid booking records. [See the organizer workspace →](docs/images/tickit-organizers.png)
 
-Without provider configuration the website permits browsing and keeps protected operations closed. Real payment checkout is the next phase; the API cannot issue unpaid tickets. Sample catalog seeding is opt-in for local development.
+Without provider configuration the website permits browsing and keeps protected operations closed. Test payment checkout is connected; the API cannot issue unpaid tickets. Sample catalog seeding is opt-in for local development.
 
 [Neon setup](docs/NEON_SETUP.md) connects PostgreSQL and private workspace file storage. A [free deployment Blueprint](docs/FREE_DEPLOYMENT.md) targets Render and Neon free plans; custom domain registration and paid services are outside the current budget. See [production setup and account requirements](docs/PRODUCTION_SETUP.md).
 

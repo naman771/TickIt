@@ -9,7 +9,8 @@ public record CheckoutRequest(
     @NotNull @Size(max = 3) List<@NotNull @Positive Long> seatIds,
     @Positive Long ticketTypeId,
     @Min(0) @Max(3) int quantity,
-    @Min(0) @Max(120) Integer attendeeAge) {
+    @Min(0) @Max(120) Integer attendeeAge,
+    @NotNull @Min(0) Long eventVersion) {
   public String fingerprint() {
     return eventId
         + "|"
@@ -19,6 +20,8 @@ public record CheckoutRequest(
         + "|"
         + quantity
         + "|"
-        + attendeeAge;
+        + attendeeAge
+        + "|"
+        + eventVersion;
   }
 }

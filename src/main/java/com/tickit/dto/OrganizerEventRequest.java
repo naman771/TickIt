@@ -29,15 +29,21 @@ public record OrganizerEventRequest(
     LocalDateTime salesStart,
     LocalDateTime salesEnd,
     @Min(1) @Max(3) int perOrderLimit,
-    @Min(1) @Max(120) Integer minimumAge) {
+    @Min(1) @Max(120) Integer minimumAge,
+    @Size(max = 1000) String changeReason) {
   public record SeatInput(
+      @Positive Long id,
       @NotBlank @Size(max = 40) String section,
       @NotBlank @Size(max = 10) String row,
       @Min(1) @Max(999) int number,
       @Min(0) @Max(970) int x,
       @Min(0) @Max(670) int y,
       @NotNull @DecimalMin("0.00") @DecimalMax("999999.99") @Digits(integer = 6, fraction = 2)
-          BigDecimal price) {}
+          BigDecimal price) {
+    public SeatInput(String section, String row, int number, int x, int y, BigDecimal price) {
+      this(null, section, row, number, x, y, price);
+    }
+  }
 
   public record PoolInput(
       @NotBlank @Size(max = 80) String name,

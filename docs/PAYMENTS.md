@@ -70,9 +70,9 @@ npm run build
 node scripts/build-organizer.mjs
 ```
 
-The complete local backend run: **125 tests, 0 failures, 0 errors, 2 optional provider tests skipped** (123 passing). Payment tests cover test-only configuration, server pricing, account isolation, age/quantity/currency validation, all-or-nothing holds, idempotent creates, raw-body signatures, captured versus authorized status, amount/order mismatch, duplicate and concurrent webhooks, mixed inventory, transaction rollback, uncertain-create recovery, expiry and stale same-account callbacks. The HTTP adapter is tested with a simulated client, including fixed provider origin, Basic authentication, timeouts and sanitized failures.
+The complete local backend run: **134 tests, 0 failures, 0 errors, 2 optional provider tests skipped** (132 passing). Payment tests cover test-only configuration, server pricing, account isolation, age/quantity/currency validation, all-or-nothing holds, idempotent creates, raw-body signatures, captured versus authorized status, amount/order mismatch, duplicate and concurrent webhooks, mixed inventory, transaction rollback, uncertain-create recovery, expiry and stale same-account callbacks. The HTTP adapter is tested with a simulated client, including fixed provider origin, Basic authentication, timeouts and sanitized failures.
 
-Desktop/mobile Playwright run: **30 checks passed**, including successful verification, modal dismissal/release and recovery after a failed verification response. Payment screens and network responses are explicit fixtures. Actual provider-hosted checkout completion and webhook delivery require the connected Test Mode account and remain unverified until a user completes that flow.
+Desktop/mobile Playwright run: **38 checks passed**, including successful verification, modal dismissal/release and recovery after a failed verification response. Payment screens and network responses are explicit fixtures. A user-completed hosted test checkout was subsequently verified read-only: Razorpay reported captured and TickIt retained one matching confirmed assigned-seat booking. Automated UI checks do not operate the provider-hosted payment modal.
 
 Six critical payment cases also passed against a disposable Neon branch with a three-connection pool. Flyway applied V5 on that branch; the checks exercised three-seat capture, mixed admission, concurrent webhook replay, transactional rollback, uncertain-create recovery and stale same-account callbacks. The temporary branch was deleted and CLI context restored to production. The production database was not migrated during these checks.
 
@@ -87,4 +87,10 @@ RAZORPAY_E2E: real provider order create/fetch PASS; INR 100 paise and receipt m
 Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
 ```
 
-The disposable database branch was removed and production CLI context restored. No production catalog or booking fixture was created. This does not substitute for completing a hosted Checkout payment and observing the provider's signed webhook.
+The disposable database branch was removed and production CLI context restored. No production catalog or booking fixture was created. The separate user-completed hosted payment confirmed the provider capture and matching application booking. Webhook delivery diagnostics are distinct from that payment-state verification.
+
+## Organizer changes during checkout
+
+Create requests include the current public event `version` as `eventVersion`. Stale selections receive 409 and must be refreshed. Checkout lines store that revision and retain their original prices. Rescheduling, cancellation and deletion expire pending checkouts under the same event lock used for settlement. Captures arriving after such changes enter `REVIEW_REQUIRED` rather than issuing tickets against obsolete inventory. Confirmed receipts remain confirmed and include the latest event status/schedule in account history.
+
+Seat removal retires an unsold position while preserving older checkout references. Booked seats cannot be deleted or relabelled. Cancellation/deletion retains financial records and exposes confirmed payments in the developer review queue with `refundRequired: true`. This flag does not initiate a refund; manual follow-up remains necessary.

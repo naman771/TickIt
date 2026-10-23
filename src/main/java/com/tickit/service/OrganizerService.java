@@ -15,6 +15,12 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class OrganizerService {
   private final CurrentUserService currentUser;
+  private final BookingRepository bookings;
+  private final SeatHoldService seatHolds;
+  private final AdmissionHoldRepository admissionHolds;
+  private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+  private final com.tickit.payment.CheckoutService checkout;
+  private final org.springframework.messaging.simp.SimpMessagingTemplate messages;
   private final jakarta.persistence.EntityManager entityManager;
   private final OrganizerAccountRepository organizers;
   private final EventRepository events;
@@ -45,6 +51,7 @@ public class OrganizerService {
   @Transactional(readOnly = true)
   public List<Map<String, Object>> list() {
     return events.findByOrganizerIdOrderByCreatedAtDesc(account().getId()).stream()
+        .filter(e -> !"DELETED".equals(e.getPublicationStatus()))
         .map(this::view)
         .toList();
   }
@@ -59,6 +66,8 @@ public class OrganizerService {
     Event event =
         (locked ? events.lockById(id) : events.findById(id))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    if ("DELETED".equals(event.getPublicationStatus()))
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND);
     if (event.getOrganizer() == null || !event.getOrganizer().getId().equals(owner))
       throw new ResponseStatusException(HttpStatus.NOT_FOUND);
     return event;
@@ -68,11 +77,14 @@ public class OrganizerService {
   public Map<String, Object> save(Long id, OrganizerEventRequest input) {
     OrganizerAccount owner = account();
     Event event = id == null ? new Event() : owned(id, true);
-    if (id != null && !"DRAFT".equals(event.getPublicationStatus()))
-      throw conflict("Published events are locked. Create a new draft for a different layout.");
     if (id != null && !Objects.equals(event.getLayoutVersion(), input.version()))
       throw conflict("This draft changed in another tab. Reload before saving.");
     validate(input);
+    if (id != null && !"DRAFT".equals(event.getPublicationStatus())) {
+      if (!"PUBLISHED".equals(event.getPublicationStatus()))
+        throw conflict("Cancelled events cannot be edited; duplicate to create a new event");
+      return amend(event, input);
+    }
     event.setUpdatedAt(Instant.now());
     event.setOrganizer(owner);
     event.setPublicationStatus("DRAFT");
@@ -145,6 +157,214 @@ public class OrganizerService {
     seats.flush();
     tickets.flush();
     return view(event);
+  }
+
+  private Map<String, Object> amend(Event event, OrganizerEventRequest input) {
+    Long id = event.getId();
+    boolean rescheduled =
+        !Objects.equals(event.getStartTime(), input.startTime())
+            || !Objects.equals(event.getEndTime(), input.endTime())
+            || !event.getTimezone().equals(input.timezone());
+    if (!input.startTime().atZone(ZoneId.of(input.timezone())).toInstant().isAfter(Instant.now()))
+      throw bad("The event must start in the future");
+    if (!event.getAdmissionMode().equals(input.admissionMode()))
+      throw conflict("Admission format cannot change after publishing");
+    if (!samePools(event, input))
+      throw conflict("Published admission zones and quotas cannot be replaced");
+    if (rescheduled && (input.changeReason() == null || input.changeReason().isBlank()))
+      throw bad("Explain the date or time change for ticket holders");
+    var existing = seats.findByVenueEventId(id);
+    Integer active =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM checkout_order WHERE event_id=? AND status IN"
+                + " ('CREATING','CREATE_UNKNOWN','PENDING') AND expires_at>clock_timestamp()",
+            Integer.class,
+            id);
+    boolean held =
+        !seatHolds.heldSeatIds(id, existing.stream().map(Seat::getId).toList()).isEmpty()
+            || pools.findByEventIdOrderById(id).stream()
+                .anyMatch(p -> admissionHolds.activeInPool(p.getId()) > 0)
+            || (active != null && active > 0);
+    // A reschedule invalidates checkout; inventory changes wait for active reservations to end.
+    if (held && !rescheduled)
+      throw conflict("Guests have active reservations. Retry after their holds expire");
+    if (rescheduled && held && !sameSeats(existing, input.seats()))
+      throw conflict("Reschedule first; change seats after reservations have expired");
+    Map<Long, Seat> byId = new HashMap<>();
+    Map<String, Seat> byLabel = new HashMap<>();
+    for (var seat : existing) {
+      byId.put(seat.getId(), seat);
+      byLabel.put(label(seat.getSection(), seat.getSeatRow(), seat.getSeatNumber()), seat);
+    }
+    Set<Long> retained = new HashSet<>();
+    var changes = new LinkedHashMap<Seat, OrganizerEventRequest.SeatInput>();
+    var venue = venues.findByEventId(id).stream().findFirst().orElseThrow();
+    for (var item : input.seats()) {
+      Seat seat =
+          item.id() != null
+              ? byId.get(item.id())
+              : byLabel.get(label(item.section(), item.row(), item.number()));
+      if (item.id() != null && seat == null)
+        throw bad("A seat ID does not belong to this active event layout");
+      if (seat != null) {
+        if (!retained.add(seat.getId())) throw bad("Duplicate seat ID");
+        if (bookings.existsBySeatIdAndEventId(seat.getId(), id)
+            && !label(seat.getSection(), seat.getSeatRow(), seat.getSeatNumber())
+                .equals(label(item.section(), item.row(), item.number())))
+          throw conflict("Booked seat labels cannot change");
+      } else {
+        seat = new Seat();
+        seat.setVenue(venue);
+      }
+      changes.put(seat, item);
+    }
+    for (var seat : existing)
+      if (!retained.contains(seat.getId())) {
+        if (bookings.existsBySeatIdAndEventId(seat.getId(), id))
+          throw conflict(
+              "Booked seats cannot be deleted; cancel the event if it will not take place");
+        seat.setRetired(true);
+      }
+    seats.flush();
+    // Temporarily remove unchanged IDs from the active-label index to permit atomic label swaps.
+    for (var seat : changes.keySet()) if (seat.getId() != null) seat.setRetired(true);
+    seats.flush();
+    for (var entry : changes.entrySet()) {
+      var seat = entry.getKey();
+      var item = entry.getValue();
+      seat.setSection(item.section().trim());
+      seat.setSeatRow(item.row().trim());
+      seat.setSeatNumber(item.number());
+      seat.setX(item.x());
+      seat.setY(item.y());
+      seat.setPrice(item.price());
+      seat.setRetired(false);
+      seats.save(seat);
+    }
+    seats.flush();
+    if (rescheduled) {
+      checkout.invalidateForEvent(id);
+      audit(event, "RESCHEDULED", input.changeReason(), input.startTime(), input.timezone());
+      event.setScheduleChangedAt(Instant.now());
+      event.setChangeNote(input.changeReason().trim());
+    }
+    event.setName(input.name().trim());
+    event.setDescription(input.description());
+    event.setCategory(input.category());
+    event.setCity(input.city().trim());
+    event.setStartTime(input.startTime());
+    event.setEndTime(input.endTime());
+    event.setTimezone(input.timezone());
+    event.setSalesStart(input.salesStart());
+    event.setSalesEnd(input.salesEnd());
+    event.setGuestCapacity(input.guestCapacity());
+    event.setPerOrderLimit(input.perOrderLimit());
+    event.setMinimumAge(input.minimumAge());
+    event.setImageUrl(input.imageUrl());
+    event.setStageLabel(input.stageLabel());
+    event.setStageX(input.stageX());
+    event.setStageY(input.stageY());
+    event.setUpdatedAt(Instant.now());
+    venue.setName(input.venueName().trim());
+    venue.setLocation(input.address().trim());
+    venues.save(venue);
+    events.saveAndFlush(event);
+    notifyAfterCommit(id);
+    return view(event);
+  }
+
+  private String label(String section, String row, int number) {
+    return section.trim() + "/" + row.trim() + "/" + number;
+  }
+
+  private boolean sameSeats(List<Seat> existing, List<OrganizerEventRequest.SeatInput> input) {
+    if (existing.size() != input.size()) return false;
+    return input.stream()
+        .allMatch(
+            i ->
+                existing.stream()
+                    .anyMatch(
+                        s ->
+                            (i.id() == null || i.id().equals(s.getId()))
+                                && label(s.getSection(), s.getSeatRow(), s.getSeatNumber())
+                                    .equals(label(i.section(), i.row(), i.number()))
+                                && Objects.equals(s.getX(), i.x())
+                                && Objects.equals(s.getY(), i.y())
+                                && s.getPrice().compareTo(i.price()) == 0));
+  }
+
+  private boolean samePools(Event event, OrganizerEventRequest input) {
+    var old = pools.findByEventIdOrderById(event.getId());
+    if (old.size() != input.pools().size()) return false;
+    for (var p : old) {
+      var next =
+          input.pools().stream()
+              .filter(x -> x.name().trim().equals(p.getName()))
+              .findFirst()
+              .orElse(null);
+      if (next == null || next.capacity() != p.getCapacity()) return false;
+      var types = tickets.findByPoolIdOrderById(p.getId());
+      if (types.size() != next.tickets().size()) return false;
+      for (var t : types)
+        if (next.tickets().stream()
+            .noneMatch(
+                x ->
+                    x.name().trim().equals(t.getName())
+                        && x.quota() == t.getQuota()
+                        && x.price().compareTo(t.getPrice()) == 0)) return false;
+    }
+    return true;
+  }
+
+  @Transactional
+  public Map<String, Object> remove(Long id, Long revision, String reason, boolean delete) {
+    Event event = owned(id, true);
+    if (!Objects.equals(event.getLayoutVersion(), revision))
+      throw conflict("Event changed in another tab. Reload before continuing");
+    if (reason == null || reason.isBlank() || reason.length() > 1000)
+      throw bad("Provide a reason of up to 1000 characters");
+    if (!delete && !"PUBLISHED".equals(event.getPublicationStatus()))
+      throw conflict("Only a published event can be cancelled");
+    checkout.invalidateForEvent(id);
+    audit(
+        event, delete ? "DELETED" : "CANCELLED", reason, event.getStartTime(), event.getTimezone());
+    event.setPublicationStatus(delete ? "DELETED" : "CANCELLED");
+    event.setChangeNote(reason.trim());
+    event.setUpdatedAt(Instant.now());
+    events.saveAndFlush(event);
+    notifyAfterCommit(id);
+    return view(event);
+  }
+
+  private void audit(Event e, String action, String reason, LocalDateTime next, String timezone) {
+    jdbc.update(
+        "INSERT INTO"
+            + " event_change(event_id,action,reason,previous_start,new_start,previous_timezone,new_timezone)"
+            + " VALUES(?,?,?,?,?,?,?)",
+        e.getId(),
+        action,
+        reason,
+        e.getStartTime(),
+        next,
+        e.getTimezone(),
+        timezone);
+  }
+
+  private void notifyAfterCommit(Long id) {
+    org.springframework.transaction.support.TransactionSynchronizationManager
+        .registerSynchronization(
+            new org.springframework.transaction.support.TransactionSynchronization() {
+              @Override
+              public void afterCommit() {
+                try {
+                  messages.convertAndSend(
+                      "/topic/seats/" + id,
+                      (Object) Map.of("eventId", id, "status", "EVENT_CHANGED"));
+                } catch (Exception ignored) {
+                  /* Customer polling reconciles. */
+                }
+              }
+            });
   }
 
   private void validate(OrganizerEventRequest i) {
@@ -260,12 +480,18 @@ public class OrganizerService {
     data.put("stageX", e.getStageX());
     data.put("stageY", e.getStageY());
     data.put("version", e.getLayoutVersion());
+    data.put("changeReason", e.getChangeNote());
+    data.put("scheduleChanged", e.getScheduleChangedAt() != null);
+    data.put(
+        "bookedSeatIds",
+        bookings.findByEventId(e.getId()).stream().map(b -> b.getSeat().getId()).toList());
     data.put(
         "seats",
         seats.findByVenueEventId(e.getId()).stream()
             .map(
                 s ->
                     new OrganizerEventRequest.SeatInput(
+                        s.getId(),
                         s.getSection(),
                         s.getSeatRow(),
                         s.getSeatNumber(),

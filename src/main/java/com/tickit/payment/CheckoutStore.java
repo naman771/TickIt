@@ -24,7 +24,8 @@ public class CheckoutStore {
       String providerOrderId,
       String paymentId,
       UUID admissionHoldId,
-      Instant expiresAt) {}
+      Instant expiresAt,
+      long eventRevision) {}
 
   public record Item(Long seatId, Long ticketTypeId, String label, int quantity, long unitAmount) {}
 
@@ -40,7 +41,8 @@ public class CheckoutStore {
         r.getString("provider_order_id"),
         r.getString("provider_payment_id"),
         r.getObject("admission_hold_id", UUID.class),
-        r.getTimestamp("expires_at").toInstant());
+        r.getTimestamp("expires_at").toInstant(),
+        r.getLong("event_revision"));
   }
 
   public Order get(UUID id) {
@@ -99,10 +101,17 @@ public class CheckoutStore {
 
   public List<Order> history(long user) {
     return jdbc.query(
-        "SELECT * FROM checkout_order WHERE user_id=? ORDER BY last_checked_at ASC NULLS FIRST,"
-            + " created_at LIMIT 100",
+        "SELECT * FROM checkout_order WHERE user_id=? ORDER BY created_at DESC LIMIT 100",
         this::map,
         user);
+  }
+
+  public List<Order> pendingForEvent(long id) {
+    return jdbc.query(
+        "SELECT * FROM checkout_order WHERE event_id=? AND status IN"
+            + " ('CREATING','CREATE_UNKNOWN','PENDING')",
+        this::map,
+        id);
   }
 
   public List<Order> reconcilable() {

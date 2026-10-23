@@ -18,6 +18,9 @@ public final class EventSales {
   }
 
   public static void requireOpen(Event e) {
+    if (!"PUBLISHED".equals(e.getPublicationStatus()))
+      throw new ResponseStatusException(
+          HttpStatus.CONFLICT, "This event is no longer accepting reservations");
     Instant now = Instant.now();
     ZoneId zone = ZoneId.of(e.getTimezone());
     if (e.getSalesStart() != null && now.isBefore(e.getSalesStart().atZone(zone).toInstant()))

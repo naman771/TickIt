@@ -91,6 +91,8 @@ class RazorpayServicesE2ETest {
           Map.of(
               "eventId",
               event.getId(),
+              "eventVersion",
+              event.getLayoutVersion(),
               "idempotencyKey",
               UUID.randomUUID(),
               "seatIds",

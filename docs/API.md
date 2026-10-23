@@ -81,7 +81,7 @@ All `/api/organizer/**` routes require authentication. Every event lookup/update
 |---|---|---|
 | GET / POST | `/api/organizer/profile` | Read/create the authenticated user's organizer workspace. |
 | GET / POST | `/api/organizer/events` | List owned events / create a private draft. |
-| GET / PUT | `/api/organizer/events/{id}` | Read an owned event / replace an owned draft with its current revision. |
+| GET / PUT | `/api/organizer/events/{id}` | Read an owned event / save a draft or amend a published event with its current revision. |
 | POST | `/api/organizer/events/{id}/publish` | Publish the saved draft using `{version}` after validation. |
 | GET | `/api/events/{id}/admission` | Published-event zones, shared capacity and ticket prices/availability. |
 | POST | `/api/events/{id}/admission-holds` | Authenticated quantity hold: `{ticketTypeId,quantity}`; whole quantity or 409. |
@@ -113,6 +113,7 @@ All order operations require the signed account; the webhook uses its own raw-bo
 ```json
 {
   "eventId": 42,
+  "eventVersion": 0,
   "idempotencyKey": "11111111-1111-4111-8111-111111111111",
   "seatIds": [501, 502],
   "ticketTypeId": null,
@@ -124,3 +125,11 @@ All order operations require the signed account; the webhook uses its own raw-bo
 For standing admission, use `seatIds: []`, a ticket type ID and a positive quantity. Mixed requests may include both, with three tickets total or the event's lower limit. Do not send a client-calculated price. Amounts returned by payment APIs and `unitAmount` are integer paise. Reuse the UUID key only for the exact same selection; changed requests return 409. Same-account/event concurrent order creation returns 409 while an earlier checkout is active. Existing account limits count confirmed standing and seated admission together.
 
 Verification payload is the standard `razorpay_order_id`, `razorpay_payment_id`, `razorpay_signature` object. The server uses its stored order ID, not a client-provided substitute. Captured amounts/currency/order IDs must match. `authorized` is not confirmation. Webhooks require `X-Razorpay-Signature`, calculated over the unmodified body with a separate webhook secret. See [payment states and limitations](PAYMENTS.md).
+
+## Published event management
+
+Authenticated event owners use `PUT /api/organizer/events/{id}` with the full current layout and `version`. Include each existing seat's `id` to preserve identity. Price and position changes apply to future purchases; booked seats cannot be removed or relabelled. Active reservations block layout edits. Customer booking limits remain unchanged.
+
+To reschedule, update `startTime`/`endTime`/`timezone` and supply `changeReason`. To cancel: `POST /api/organizer/events/{id}/cancel` with `{ "version": 1, "reason": "Venue unavailable" }`. To archive: `DELETE /api/organizer/events/{id}` with the same body shape. All require ownership and the current revision; stale requests return 409. Archival preserves payment and booking history.
+
+Public event responses now include `version`, `status`, `changeNote` and `scheduleChanged`. Payment creation requires `eventVersion` alongside the selected event ID. Account booking/payment responses include an `event` summary even when the event is cancelled or deleted from the catalog.

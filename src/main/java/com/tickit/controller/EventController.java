@@ -135,6 +135,10 @@ public class EventController {
 
     return EventDto.builder()
         .id(event.getId())
+        .version(event.getLayoutVersion())
+        .status(event.getPublicationStatus())
+        .changeNote(event.getChangeNote())
+        .scheduleChanged(event.getScheduleChangedAt() != null)
         .perOrderLimit(Math.min(3, event.getPerOrderLimit()))
         .minimumAge(event.getMinimumAge())
         .currency(event.getCurrency())

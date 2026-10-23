@@ -154,8 +154,9 @@ function editor(draft) {
   state.draft = structuredClone(draft);
   state.seats = structuredClone(draft.seats || []);
   state.pools = structuredClone(draft.pools || []);
-  const locked = draft.status === "PUBLISHED";
-  root.innerHTML = `<section class="container"><a class="back" href="#">← All events</a><div class="page-head"><div><div class="eyebrow">${draft.id ? "Event workspace" : "Create an event"} / <span class="badge ${locked ? "" : "draft"}">${locked ? "Published" : "Private draft"}</span></div><h1>${locked ? esc(draft.name) : draft.id ? "Keep shaping your event." : "Something worth showing up for."}</h1><p>${locked ? "This published event is read-only. Its layout is preserved for your guests." : "Your draft stays private until you publish it."}</p></div><div class="top-actions"><button type="button" data-preview>Preview event</button>${locked ? `<button data-duplicate>Duplicate as draft</button><a class="primary" style="padding:12px 18px;border-radius:5px;font-size:12px" href="${esc(base)}/#event/${draft.id}" target="_blank" rel="noopener">View customer page ↗</a>` : ""}</div></div><form id="eventForm"><div class="editor-layout"><div><fieldset ${locked ? "disabled" : ""}><section class="panel"><div class="panel-head"><div><h2><small>01</small> The essentials</h2><p>Tell guests what they can look forward to.</p></div></div><div class="fields">${field("Event name", "name", draft.name, "text", 'required maxlength="512"', true)}<label class="full">Event description<textarea name="description" maxlength="10000" placeholder="The experience, the lineup, and what guests should know…">${esc(draft.description)}</textarea></label>${select(
+  const published = draft.status === "PUBLISHED";
+  const locked = ["CANCELLED", "DELETED"].includes(draft.status);
+  root.innerHTML = `<section class="container"><a class="back" href="#">← All events</a><div class="page-head"><div><div class="eyebrow">${draft.id ? "Event workspace" : "Create an event"} / <span class="badge ${locked ? "" : "draft"}">${esc(draft.status || "Private draft")}</span></div><h1>${locked ? esc(draft.name) : draft.id ? "Keep shaping your event." : "Something worth showing up for."}</h1><p>${locked ? "This event is no longer on sale. Booking and payment records are retained." : published ? "Update available seats or change event dates. Booked seats cannot be removed or relabelled." : "Your draft stays private until you publish it."}</p></div><div class="top-actions"><button type="button" data-preview>Preview event</button>${draft.id ? `<button data-duplicate>Duplicate as draft</button>${published ? `<a class="primary" style="padding:12px 18px;border-radius:5px;font-size:12px" href="${esc(base)}/#event/${draft.id}" target="_blank" rel="noopener">View customer page ↗</a>` : ""}` : ""}</div></div><form id="eventForm"><div class="editor-layout"><div><fieldset ${locked ? "disabled" : ""}><section class="panel"><div class="panel-head"><div><h2><small>01</small> The essentials</h2><p>Tell guests what they can look forward to.</p></div></div><div class="fields">${field("Event name", "name", draft.name, "text", 'required maxlength="512"', true)}<label class="full">Event description<textarea name="description" maxlength="10000" placeholder="The experience, the lineup, and what guests should know…">${esc(draft.description)}</textarea></label>${select(
     "Event type",
     "category",
     [
@@ -188,7 +189,7 @@ function editor(draft) {
       ["America/New_York", "New York — America/New_York"],
     ],
     draft.timezone,
-  )}${field("Maximum guest capacity", "guestCapacity", draft.guestCapacity, "number", 'required min="1" max="100000"')}${field("Sales open (optional)", "salesStart", draft.salesStart || "", "datetime-local")}${field("Sales close (optional)", "salesEnd", draft.salesEnd || "", "datetime-local")}${field("Tickets per account / order", "perOrderLimit", Math.min(3, draft.perOrderLimit || 3), "number", 'min="1" max="3" required')}${field("Minimum guest age (optional)", "minimumAge", draft.minimumAge ?? "", "number", 'min="1" max="120" placeholder="All ages"')}<p class="hint full">Leave blank for all ages. Age eligibility is self-declared; check guest ID at entry when required.</p>${field("Cover image URL", "imageUrl", draft.imageUrl || "", "url", 'placeholder="https://…"', true)}</div></section><section class="panel"><div class="panel-head"><div><h2><small>02</small> The place</h2><p>Use the real venue and address guests will travel to.</p></div></div><div class="fields">${field("Venue name", "venueName", draft.venueName, "text", 'required maxlength="255"')}${field("City", "city", draft.city, "text", 'required maxlength="100"')}${field("Venue address", "address", draft.address, "text", 'required maxlength="512"', true)}</div></section><section class="panel" id="seatingSection"><div class="panel-head"><div><h2><small>03</small> Shape the room</h2><p>Build a custom seat map. Each seat has its own section, label, position and INR price.</p></div></div><div class="info-strip">Templates are starting layouts. Verify the final map against your actual venue. Use Select seats to choose up to 3 seats, then Move seats to drag them together or apply a shared price. Click a selected seat to deselect. Use Remove to exclude unavailable positions. Maximum 1,500 assigned seats.</div><div class="section-builder"><div class="fields"><label>Section name<input id="sectionName" value="Main" maxlength="40"></label><label>Layout<select id="layoutTemplate"><option value="straight">Straight rows</option><option value="fan">Fan-shaped rows</option><option value="split">Two blocks + centre aisle</option></select></label><label>Rows<input id="rowCount" type="number" min="1" max="18" value="6"></label><label>Seats per row<input id="columnCount" type="number" min="1" max="28" value="12"></label><label>Price / seat (INR)<input id="sectionPrice" type="number" min="0" max="999999.99" step="0.01" value="500"></label><label>Left offset<input id="offsetX" type="number" min="20" max="900" value="80"></label><label>Top offset<input id="offsetY" type="number" min="80" max="650" value="130"></label><label>Row prefix<input id="rowPrefix" maxlength="5" placeholder="Optional"></label></div><div class="actions" style="padding:20px 0 0"><button type="button" data-add-section>Add section to map ＋</button><button type="button" data-clear-map>Clear map</button></div></div><div class="controls">${field("Stage label", "stageLabel", draft.stageLabel, "text", 'maxlength="80"')}${field("Stage left", "stageX", draft.stageX, "number", 'min="0" max="800"')}${field("Stage top", "stageY", draft.stageY, "number", 'min="0" max="650"')}</div><div class="map-shell"><div class="map-tools"><button type="button" data-tool="select">Select seats (max 3)</button><button type="button" class="active" data-tool="move">Move seats</button><button type="button" data-tool="remove">Remove seats</button><button type="button" data-zoom="in" aria-label="Zoom in on seating layout">＋ Zoom</button><button type="button" data-zoom="out" aria-label="Zoom out of seating layout">− Zoom</button><button type="button" data-export>Export CSV</button><button type="button" data-import>Import CSV</button><input id="seatCsv" class="hidden" type="file" accept=".csv,text/csv"><span class="count" id="seatCount"></span></div><div class="controls"><label>Selected seat price (INR)<input id="selectedPrice" type="number" min="0" max="999999.99" step="0.01"></label><button type="button" data-price-selected>Apply price to selected</button><button type="button" data-remove-selected>Remove selected</button><button type="button" data-clear-selected>Clear selection</button><span id="selectionCount" aria-live="polite"></span></div><div id="layoutMap"></div></div><p class="hint">CSV columns: section,row,number,x,y,price. Coordinates use a 1000 × 700 canvas. Imports replace the current map. Stage position is saved separately.</p></section><section class="panel" id="admissionSection"><div class="panel-head"><div><h2><small>04</small> Admission zones & tickets</h2><p>Each zone has one shared guest capacity. Ticket types within it draw from that same capacity.</p></div></div><div class="info-strip">Example: a 400-person floor can have Early Bird and Regular tickets. Selling either uses the same 400 spaces. A ticket quota limits that price tier; it does not add venue capacity.</div><div id="poolList"></div><button type="button" data-add-pool>Add admission zone ＋</button></section></fieldset><div class="actions">${!locked ? '<button class="primary" type="submit">Save draft</button><button type="button" data-publish>Publish event ↗</button>' : ""}</div><p class="hint">Publishing makes this event visible on the customer website and locks this event's layout. Ticket checkout remains unavailable until payment processing is activated.</p></div><aside class="side-note"><div class="eyebrow">Your event, at a glance</div><h3>Build with confidence.</h3><p>Assigned seats and standing zones are counted together against your maximum guest capacity.</p><div class="metric" id="inventoryTotal">0</div><small>places configured</small><p id="inventoryStatus"></p><p>Prices for new organizer events are in INR. Drafts are visible only inside your workspace.</p><hr style="border:0;border-top:1px solid #cdd8c8;margin:22px 0"><p>Publishing your event does not enable paid checkout. Guests will see the event and its admission options.</p></aside></div></form><dialog id="preview" class="preview-dialog"></dialog></section>`;
+  )}${field("Maximum guest capacity", "guestCapacity", draft.guestCapacity, "number", 'required min="1" max="100000"')}${field("Sales open (optional)", "salesStart", draft.salesStart || "", "datetime-local")}${field("Sales close (optional)", "salesEnd", draft.salesEnd || "", "datetime-local")}${field("Tickets per account / order", "perOrderLimit", Math.min(3, draft.perOrderLimit || 3), "number", 'min="1" max="3" required')}${field("Minimum guest age (optional)", "minimumAge", draft.minimumAge ?? "", "number", 'min="1" max="120" placeholder="All ages"')}<p class="hint full">Leave blank for all ages. Age eligibility is self-declared; check guest ID at entry when required.</p>${field("Cover image URL", "imageUrl", draft.imageUrl || "", "url", 'placeholder="https://…"', true)}</div>${published ? '<label class="full">Reason for date/time change<textarea name="changeReason" maxlength="1000" placeholder="Explain the change for existing ticket holders"></textarea></label>' : ""}</section><section class="panel"><div class="panel-head"><div><h2><small>02</small> The place</h2><p>Use the real venue and address guests will travel to.</p></div></div><div class="fields">${field("Venue name", "venueName", draft.venueName, "text", 'required maxlength="255"')}${field("City", "city", draft.city, "text", 'required maxlength="100"')}${field("Venue address", "address", draft.address, "text", 'required maxlength="512"', true)}</div></section><section class="panel" id="seatingSection"><div class="panel-head"><div><h2><small>03</small> Shape the room</h2><p>Build a custom seat map. Each seat has its own section, label, position and INR price.</p></div></div><div class="info-strip">Templates are starting layouts. Verify the final map against your actual venue. Use Select seats or Select all to choose any number of seats, then Move seats to drag them together or apply a shared price. Click a selected seat to deselect. Use Remove to exclude unavailable positions. Maximum 1,500 assigned seats.</div><div class="section-builder"><div class="fields"><label>Section name<input id="sectionName" value="Main" maxlength="40"></label><label>Layout<select id="layoutTemplate"><option value="straight">Straight rows</option><option value="fan">Fan-shaped rows</option><option value="split">Two blocks + centre aisle</option></select></label><label>Rows<input id="rowCount" type="number" min="1" max="18" value="6"></label><label>Seats per row<input id="columnCount" type="number" min="1" max="28" value="12"></label><label>Price / seat (INR)<input id="sectionPrice" type="number" min="0" max="999999.99" step="0.01" value="500"></label><label>Left offset<input id="offsetX" type="number" min="20" max="900" value="80"></label><label>Top offset<input id="offsetY" type="number" min="80" max="650" value="130"></label><label>Row prefix<input id="rowPrefix" maxlength="5" placeholder="Optional"></label></div><div class="actions" style="padding:20px 0 0"><button type="button" data-add-section>Add section to map ＋</button><button type="button" data-clear-map>Clear map</button></div></div><div class="controls">${field("Stage label", "stageLabel", draft.stageLabel, "text", 'maxlength="80"')}${field("Stage left", "stageX", draft.stageX, "number", 'min="0" max="800"')}${field("Stage top", "stageY", draft.stageY, "number", 'min="0" max="650"')}</div><div class="map-shell"><div class="map-tools"><button type="button" data-tool="select">Select seats</button><button type="button" class="active" data-tool="move">Move seats</button><button type="button" data-tool="remove">Remove seats</button><button type="button" data-zoom="in" aria-label="Zoom in on seating layout">＋ Zoom</button><button type="button" data-zoom="out" aria-label="Zoom out of seating layout">− Zoom</button><button type="button" data-export>Export CSV</button><button type="button" data-import>Import CSV</button><input id="seatCsv" class="hidden" type="file" accept=".csv,text/csv"><span class="count" id="seatCount"></span></div><div class="controls"><label>Selected seat price (INR)<input id="selectedPrice" type="number" min="0" max="999999.99" step="0.01"></label><button type="button" data-price-selected>Apply price to selected</button><button type="button" data-remove-selected>Remove selected</button><button type="button" data-select-all>Select all seats</button><button type="button" data-clear-selected>Clear selection</button><span id="selectionCount" aria-live="polite"></span></div><div id="layoutMap"></div></div><p class="hint">CSV columns: section,row,number,x,y,price. Coordinates use a 1000 × 700 canvas. Imports replace the current map. Stage position is saved separately.</p></section><section class="panel" id="admissionSection"><div class="panel-head"><div><h2><small>04</small> Admission zones & tickets</h2><p>Each zone has one shared guest capacity. Ticket types within it draw from that same capacity.</p></div></div><div class="info-strip">Example: a 400-person floor can have Early Bird and Regular tickets. Selling either uses the same 400 spaces. A ticket quota limits that price tier; it does not add venue capacity.</div><div id="poolList"></div><button type="button" data-add-pool>Add admission zone ＋</button></section></fieldset><div class="actions">${!locked ? `<button class="primary" type="submit">${published ? "Save changes" : "Save draft"}</button>${!published ? '<button type="button" data-publish>Publish event ↗</button>' : ""}` : ""}${published ? '<button type="button" data-cancel-event>Cancel event</button>' : ""}${draft.id ? '<button type="button" data-delete-event>Delete event</button>' : ""}</div><p class="hint">Published changes update the customer website. Date changes require a reason and expire pending checkouts. Cancellation or deletion preserves booking/payment records; refunds are not automatic.</p></div><aside class="side-note"><div class="eyebrow">Your event, at a glance</div><h3>Build with confidence.</h3><p>Assigned seats and standing zones are counted together against your maximum guest capacity.</p><div class="metric" id="inventoryTotal">0</div><small>places configured</small><p id="inventoryStatus"></p><p>Prices for new organizer events are in INR. Drafts are visible only inside your workspace.</p><hr style="border:0;border-top:1px solid #cdd8c8;margin:22px 0"><p>Customer booking limits remain three tickets per account or your lower event limit. Organizer seat selection has no three-seat cap.</p></aside></div></form><dialog id="preview" class="preview-dialog"></dialog></section>`;
   renderPools();
   formatSections();
   renderMap();
@@ -207,7 +208,10 @@ function formatSections() {
     section
       ?.querySelectorAll("input,select,textarea,button")
       .forEach(
-        (input) => (input.disabled = section.classList.contains("hidden")),
+        (input) =>
+          (input.disabled =
+            section.classList.contains("hidden") ||
+            ["CANCELLED", "DELETED"].includes(state.draft?.status)),
       );
   }
   updateInventory();
@@ -215,8 +219,9 @@ function formatSections() {
 function readPayload() {
   const form = new FormData(document.getElementById("eventForm"));
   const get = (k) => form.get(k) || "";
-  // Disabled published fields cannot be edited, but are available for preview and duplication.
-  if (state.draft.status === "PUBLISHED") return structuredClone(state.draft);
+  // Cancelled event fields remain available for preview and duplication.
+  if (["CANCELLED", "DELETED"].includes(state.draft.status))
+    return structuredClone(state.draft);
   return {
     salesStart: get("salesStart") || null,
     salesEnd: get("salesEnd") || null,
@@ -238,6 +243,7 @@ function readPayload() {
     stageX: Number(get("stageX")),
     stageY: Number(get("stageY")),
     version: state.draft.version,
+    changeReason: get("changeReason"),
     seats: get("admissionMode") === "GENERAL" ? [] : state.seats,
     pools: get("admissionMode") === "SEATED" ? [] : state.pools,
   };
@@ -289,7 +295,7 @@ function renderMap() {
   map.innerHTML = mapMarkup();
   const selectedCount = document.getElementById("selectionCount");
   if (selectedCount)
-    selectedCount.textContent = `${state.editorSelection.length} / 3 selected`;
+    selectedCount.textContent = `${state.editorSelection.length} selected`;
   document.getElementById("seatCount").textContent =
     state.seats.length + " assigned seats";
   updateInventory();
@@ -389,7 +395,7 @@ function renderPools() {
 function preview() {
   const d = readPayload();
   const dialog = document.getElementById("preview");
-  dialog.innerHTML = `<button type="button" data-close-preview>Close ×</button><div class="eyebrow">Customer preview / not a publication</div>${d.imageUrl ? `<img src="${esc(d.imageUrl)}" alt="Event cover">` : ""}<h2>${esc(d.name || "Your event title")}</h2><p>${esc(d.city)} · ${esc(d.venueName)}<br>${esc(String(d.startTime).replace("T", " "))} · ${esc(d.timezone)}</p><p class="description">${esc(d.description || "Your event description will appear here.")}</p>${d.admissionMode !== "GENERAL" ? mapMarkup() : ""}${d.admissionMode !== "SEATED" ? d.pools.map((p) => `<h3>${esc(p.name)} · ${p.capacity} capacity</h3>${p.tickets.map((t) => `<p>${esc(t.name)} · ${money(t.price)}</p>`).join("")}`).join("") : ""}<p>Publishing makes this event discoverable. Payment checkout is currently unavailable.</p>`;
+  dialog.innerHTML = `<button type="button" data-close-preview>Close ×</button><div class="eyebrow">Customer preview / not a publication</div>${d.imageUrl ? `<img src="${esc(d.imageUrl)}" alt="Event cover">` : ""}<h2>${esc(d.name || "Your event title")}</h2><p>${esc(d.city)} · ${esc(d.venueName)}<br>${esc(String(d.startTime).replace("T", " "))} · ${esc(d.timezone)}</p><p class="description">${esc(d.description || "Your event description will appear here.")}</p>${d.admissionMode !== "GENERAL" ? mapMarkup() : ""}${d.admissionMode !== "SEATED" ? d.pools.map((p) => `<h3>${esc(p.name)} · ${p.capacity} capacity</h3>${p.tickets.map((t) => `<p>${esc(t.name)} · ${money(t.price)}</p>`).join("")}`).join("") : ""}<p>Published events appear on the customer website. Checkout availability depends on configured payment services.</p>`;
   dialog.showModal();
 }
 async function saveDraft(render = true) {
@@ -516,18 +522,17 @@ function parseCsv(text) {
 function toggleEditorSeat(index) {
   const at = state.editorSelection.indexOf(index);
   if (at >= 0) state.editorSelection.splice(at, 1);
-  else if (state.editorSelection.length < 3) state.editorSelection.push(index);
-  else {
-    notice(
-      "Select up to 3 seats at a time. Click a selected seat to deselect it.",
-    );
-    return;
-  }
+  else state.editorSelection.push(index);
   renderMap();
 }
 document.addEventListener("keydown", (event) => {
   const seat = event.target.closest("[data-map-index]");
-  if (event.target.closest("#preview")) return;
+  if (
+    event.target.closest("#preview") ||
+    state.busy ||
+    ["CANCELLED", "DELETED"].includes(state.draft?.status)
+  )
+    return;
   if (seat && (event.key === "Enter" || event.key === " ")) {
     event.preventDefault();
     toggleEditorSeat(Number(seat.dataset.mapIndex));
@@ -544,19 +549,25 @@ document.addEventListener("pointercancel", () => {
 });
 document.addEventListener("pointerdown", (event) => {
   if (event.target.closest("#preview")) return;
-  if (state.busy) return;
+  if (state.busy || ["CANCELLED", "DELETED"].includes(state.draft?.status))
+    return;
   const seat = event.target.closest("[data-map-index]"),
     stage = event.target.closest("[data-stage]");
   if (!seat && !stage) return;
-  if (
-    seat &&
-    (state.tool === "select" || state.draft?.status === "PUBLISHED")
-  ) {
+  if (seat && state.tool === "select") {
     toggleEditorSeat(Number(seat.dataset.mapIndex));
     return;
   }
-  if (state.draft?.status === "PUBLISHED") return;
+  if (["CANCELLED", "DELETED"].includes(state.draft?.status)) return;
   if (seat && state.tool === "remove") {
+    if (
+      state.draft.bookedSeatIds?.includes(
+        state.seats[Number(seat.dataset.mapIndex)].id,
+      )
+    ) {
+      notice("Booked seats cannot be removed.");
+      return;
+    }
     state.seats.splice(Number(seat.dataset.mapIndex), 1);
     state.editorSelection = [];
     renderMap();
@@ -714,7 +725,15 @@ document.addEventListener("submit", async (event) => {
         }),
       });
       await loadWorkspace();
-    } else if (await saveDraft()) notice("Draft saved. It is still private.");
+    } else {
+      const published = state.draft?.status === "PUBLISHED";
+      if (await saveDraft())
+        notice(
+          published
+            ? "Event changes saved."
+            : "Draft saved. It is still private.",
+        );
+    }
   } catch (error) {
     notice(error.message);
   } finally {
@@ -755,6 +774,62 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (state.busy) return;
+  if (target.hasAttribute("data-select-all")) {
+    state.editorSelection = state.seats.map((s, i) => i);
+    renderMap();
+    return;
+  }
+  if (
+    target.hasAttribute("data-cancel-event") ||
+    target.hasAttribute("data-delete-event")
+  ) {
+    const deleting = target.hasAttribute("data-delete-event");
+    const reason = prompt(
+      deleting
+        ? "Why are you deleting this event? It will leave the catalog; booking/payment records are retained. Refunds are not automatic."
+        : "Why is this event cancelled? Ticket holders will see this reason. Refunds are not automatic.",
+    );
+    if (!reason?.trim()) return;
+    if (
+      !confirm(
+        deleting
+          ? "Delete this event from your workspace and customer catalog? Existing receipts are retained."
+          : "Cancel this event and stop ticket sales? Existing bookings are retained for refund handling.",
+      )
+    )
+      return;
+    state.busy = true;
+    const generation = state.routeGeneration;
+    try {
+      const result = await api(
+        `/api/organizer/events/${state.draft.id}${deleting ? "" : "/cancel"}`,
+        {
+          method: deleting ? "DELETE" : "POST",
+          body: JSON.stringify({
+            version: state.draft.version,
+            reason: reason.trim(),
+          }),
+        },
+      );
+      state.events = state.events.filter((e) => e.id !== result.id);
+      if (!deleting) state.events.unshift(result);
+      if (generation !== state.routeGeneration) return;
+      if (deleting) {
+        location.hash = "";
+        dashboard();
+      } else editor(result);
+      notice(
+        deleting
+          ? "Event deleted. Booking records were preserved."
+          : "Event cancelled. Any captured payments still need refund handling.",
+      );
+    } catch (error) {
+      notice(error.message);
+    } finally {
+      state.busy = false;
+    }
+    return;
+  }
   if (target.hasAttribute("data-clear-selected")) {
     state.editorSelection = [];
     renderMap();
@@ -763,7 +838,7 @@ document.addEventListener("click", async (event) => {
     target.hasAttribute("data-price-selected") ||
     target.hasAttribute("data-remove-selected")
   ) {
-    if (state.draft?.status === "PUBLISHED") return;
+    if (["CANCELLED", "DELETED"].includes(state.draft?.status)) return;
     if (!state.editorSelection.length) {
       notice("Select seats first using Select seats.");
       return;
@@ -778,6 +853,16 @@ document.addEventListener("click", async (event) => {
         (i) => (state.seats[i].price = Number(input.value)),
       );
     } else {
+      if (
+        state.editorSelection.some((i) =>
+          state.draft.bookedSeatIds?.includes(state.seats[i].id),
+        )
+      ) {
+        notice(
+          "Booked seats cannot be deleted. Cancel the event if it will not take place.",
+        );
+        return;
+      }
       state.seats = state.seats.filter(
         (s, i) => !state.editorSelection.includes(i),
       );
@@ -859,7 +944,7 @@ document.addEventListener("click", async (event) => {
     if (!document.getElementById("eventForm").reportValidity()) return;
     if (
       !confirm(
-        "Publish this event to the customer website? The published layout will be locked.",
+        "Publish this event to the customer website? Booked seats will be protected from deletion or relabelling.",
       )
     )
       return;

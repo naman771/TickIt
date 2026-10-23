@@ -19,6 +19,18 @@ public class OrganizerController {
 
   public record Revision(@NotNull Long version) {}
 
+  public record EventAction(@NotNull Long version, @NotBlank @Size(max = 1000) String reason) {}
+
+  @PostMapping("/events/{id}/cancel")
+  public Map<String, Object> cancel(@PathVariable Long id, @Valid @RequestBody EventAction action) {
+    return service.remove(id, action.version(), action.reason(), false);
+  }
+
+  @DeleteMapping("/events/{id}")
+  public Map<String, Object> delete(@PathVariable Long id, @Valid @RequestBody EventAction action) {
+    return service.remove(id, action.version(), action.reason(), true);
+  }
+
   @PostMapping("/profile")
   public Map<String, Object> enroll(@Valid @RequestBody Profile profile) {
     var a = service.enroll(profile.displayName());

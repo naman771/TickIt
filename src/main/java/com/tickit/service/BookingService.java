@@ -68,6 +68,7 @@ public class BookingService {
       throw new org.springframework.web.server.ResponseStatusException(
           org.springframework.http.HttpStatus.NOT_FOUND);
     }
+    if (seat.isRetired()) throw new IllegalArgumentException("Seat is no longer available");
     if (!seat.getVenue().getEvent().getId().equals(eventId)) {
       throw new IllegalArgumentException("Seat does not belong to this event");
     }

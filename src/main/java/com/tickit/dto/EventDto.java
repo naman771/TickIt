@@ -9,6 +9,10 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class EventDto {
+  private Long version;
+  private String status;
+  private String changeNote;
+  private boolean scheduleChanged;
   private int capacity;
   private int availableTickets;
   private int perOrderLimit;

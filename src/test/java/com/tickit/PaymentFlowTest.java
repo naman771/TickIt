@@ -43,6 +43,7 @@ class PaymentFlowTest {
   @Autowired ObjectMapper json;
   @Autowired JdbcTemplate jdbc;
   @Autowired EventRepository events;
+  @Autowired OrganizerAccountRepository organizerAccounts;
   @Autowired VenueRepository venues;
   @Autowired SeatRepository seats;
   @Autowired UserRepository users;
@@ -68,12 +69,16 @@ class PaymentFlowTest {
         events.saveAndFlush(
             Event.builder()
                 .name("Payment regression")
+                .guestCapacity(20)
+                .city("Mumbai")
                 .currency("INR")
                 .admissionMode("MIXED")
                 .minimumAge(18)
                 .startTime(LocalDateTime.now().plusDays(30))
                 .build());
-    var venue = venues.saveAndFlush(Venue.builder().event(event).name("Payment hall").build());
+    var venue =
+        venues.saveAndFlush(
+            Venue.builder().event(event).name("Payment hall").location("12 Park Road").build());
     rows = new ArrayList<>();
     for (int n = 1; n <= 4; n++)
       rows.add(
@@ -82,6 +87,8 @@ class PaymentFlowTest {
                   .venue(venue)
                   .seatRow("P")
                   .seatNumber(n)
+                  .x(40 + n * 30)
+                  .y(160)
                   .price(new BigDecimal("123.45"))
                   .build()));
     pool = new AdmissionPool();
@@ -133,7 +140,9 @@ class PaymentFlowTest {
     jdbc.update("DELETE FROM admission_pool WHERE id=?", pool.getId());
     jdbc.update("DELETE FROM seat WHERE venue_id=?", rows.getFirst().getVenue().getId());
     jdbc.update("DELETE FROM venue WHERE event_id=?", event.getId());
+    jdbc.update("DELETE FROM event_change WHERE event_id=?", event.getId());
     events.deleteById(event.getId());
+    jdbc.update("DELETE FROM organizer_account WHERE user_id=?", user.getId());
     users.deleteById(user.getId());
     users.deleteById(other.getId());
   }
@@ -141,6 +150,7 @@ class PaymentFlowTest {
   Map<String, Object> request(List<Long> ids, Long type, int quantity) {
     var body = new LinkedHashMap<String, Object>();
     body.put("eventId", event.getId());
+    body.put("eventVersion", events.findById(event.getId()).orElseThrow().getLayoutVersion());
     body.put("idempotencyKey", UUID.randomUUID());
     body.put("seatIds", ids);
     body.put("ticketTypeId", type);
@@ -614,5 +624,142 @@ class PaymentFlowTest {
     jdbc.update("UPDATE admission_hold SET released=true WHERE event_id=?", event.getId());
     assertEquals("REVIEW_REQUIRED", verify(order).get("status").asString());
     assertEquals(0, pools.findById(pool.getId()).orElseThrow().getSold());
+  }
+
+  void organizerOwnsFixture() throws Exception {
+    mvc.perform(
+            post("/api/organizer/profile")
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"displayName\":\"Payment organizer\"}"))
+        .andExpect(status().isOk());
+    event.setOrganizer(organizerAccounts.findById(user.getId()).orElseThrow());
+    event = events.saveAndFlush(event);
+  }
+
+  @SuppressWarnings("unchecked")
+  Map<String, Object> eventForEditing() throws Exception {
+    return json.readValue(
+        mvc.perform(get("/api/organizer/events/" + event.getId()).with(as(user)))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString(),
+        Map.class);
+  }
+
+  @Test
+  void cancellationExpiresPendingCheckoutAndLateCaptureCannotBookCancelledEvent() throws Exception {
+    organizerOwnsFixture();
+    var order = create(request(selected(2), null, 0));
+    payment(order, "captured");
+    mvc.perform(
+            post("/api/organizer/events/" + event.getId() + "/cancel")
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    json.writeValueAsString(
+                        Map.of(
+                            "version",
+                            events.findById(event.getId()).orElseThrow().getLayoutVersion(),
+                            "reason",
+                            "Venue cancelled"))))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("CANCELLED"));
+    assertFalse(holds.isSeatHeld(event.getId(), rows.get(0).getId()));
+    assertEquals("REVIEW_REQUIRED", verify(order).get("status").asString());
+    assertEquals(0, bookings.countAllTickets(user.getId(), event.getId()));
+  }
+
+  @Test
+  void cancelledOrDeletedPaidEventsKeepReceiptAndBookedSeatHistory() throws Exception {
+    organizerOwnsFixture();
+    var order = create(request(selected(1), null, 0));
+    payment(order, "captured");
+    verify(order);
+    mvc.perform(
+            post("/api/organizer/events/" + event.getId() + "/cancel")
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    json.writeValueAsString(
+                        Map.of(
+                            "version",
+                            events.findById(event.getId()).orElseThrow().getLayoutVersion(),
+                            "reason",
+                            "Show cancelled"))))
+        .andExpect(status().isOk());
+    mvc.perform(get("/api/bookings/me").with(as(user)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].event.status").value("CANCELLED"));
+    mvc.perform(
+            delete("/api/organizer/events/" + event.getId())
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    json.writeValueAsString(
+                        Map.of(
+                            "version",
+                            events.findById(event.getId()).orElseThrow().getLayoutVersion(),
+                            "reason",
+                            "Archive cancelled event"))))
+        .andExpect(status().isOk());
+    mvc.perform(get("/api/payments/orders/me").with(as(user)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].status").value("CONFIRMED"))
+        .andExpect(jsonPath("$[0].event.status").value("DELETED"));
+    assertEquals(1, bookings.countByUserIdAndEventId(user.getId(), event.getId()));
+    mvc.perform(get("/api/events/" + event.getId())).andExpect(status().isNotFound());
+  }
+
+  @Test
+  void rescheduleExpiresOldCheckoutAndRejectsStaleCustomerSelection() throws Exception {
+    organizerOwnsFixture();
+    var req = request(selected(1), null, 0);
+    var order = create(req);
+    payment(order, "captured");
+    var change = eventForEditing();
+    change.put("startTime", LocalDateTime.now().plusDays(40).withNano(0));
+    change.put("changeReason", "Later artist date");
+    mvc.perform(
+            put("/api/organizer/events/" + event.getId())
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(change)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.scheduleChanged").value(true));
+    assertEquals("REVIEW_REQUIRED", verify(order).get("status").asString());
+    assertEquals(0, bookings.countAllTickets(user.getId(), event.getId()));
+    req.put("idempotencyKey", UUID.randomUUID());
+    mvc.perform(
+            post("/api/payments/orders")
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(req)))
+        .andExpect(status().isConflict());
+    var fresh = create(request(selected(1), null, 0));
+    assertEquals("PENDING", fresh.get("status").asString());
+  }
+
+  @Test
+  void retiredSeatReferencesRemainValidForExpiredOrderHistory() throws Exception {
+    organizerOwnsFixture();
+    var order = create(request(selected(1), null, 0));
+    mvc.perform(delete("/api/payments/orders/" + order.get("id").asString()).with(as(user)))
+        .andExpect(status().isOk());
+    var update = eventForEditing();
+    var inputs = json.convertValue(update.get("seats"), java.util.List.class);
+    inputs.remove(0);
+    update.put("seats", inputs);
+    mvc.perform(
+            put("/api/organizer/events/" + event.getId())
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(update)))
+        .andExpect(status().isOk());
+    assertTrue(seats.findById(rows.get(0).getId()).orElseThrow().isRetired());
+    mvc.perform(get("/api/payments/orders/" + order.get("id").asString()).with(as(user)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].seatId").value(rows.get(0).getId()));
   }
 }

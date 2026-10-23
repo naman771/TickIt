@@ -58,7 +58,7 @@ class AccountSecurityTest {
                 .with(jwt())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
-                    "{\"eventId\":1,\"idempotencyKey\":\"11111111-1111-4111-8111-111111111111\",\"seatIds\":[1],\"quantity\":0}"))
+                    "{\"eventId\":1,\"eventVersion\":0,\"idempotencyKey\":\"11111111-1111-4111-8111-111111111111\",\"seatIds\":[1],\"quantity\":0}"))
         .andExpect(status().isServiceUnavailable());
   }
 

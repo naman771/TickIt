@@ -36,9 +36,13 @@ public class DeveloperController {
   public java.util.List<Map<String, Object>> paymentReview() {
     access.requireDeveloper();
     return jdbc.queryForList(
-        "SELECT id,event_id,status,amount,currency,provider_order_id,provider_payment_id,created_at"
-            + " FROM checkout_order WHERE status IN ('REVIEW_REQUIRED','CREATE_UNKNOWN') ORDER BY"
-            + " created_at LIMIT 100");
+        "SELECT"
+            + " o.id,o.event_id,o.status,o.amount,o.currency,o.provider_order_id,o.provider_payment_id,o.created_at,e.publication_status"
+            + " AS \"eventStatus\",(o.status='CONFIRMED' AND e.publication_status IN"
+            + " ('CANCELLED','DELETED')) AS \"refundRequired\" FROM checkout_order o JOIN event e"
+            + " ON e.id=o.event_id WHERE o.status IN ('REVIEW_REQUIRED','CREATE_UNKNOWN') OR"
+            + " (o.status='CONFIRMED' AND e.publication_status IN ('CANCELLED','DELETED')) ORDER BY"
+            + " o.created_at LIMIT 100");
   }
 
   @GetMapping("/overview")
