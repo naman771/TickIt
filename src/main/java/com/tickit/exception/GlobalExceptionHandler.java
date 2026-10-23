@@ -82,6 +82,13 @@ public class GlobalExceptionHandler {
         .body(errorBody(405, "HTTP method is not supported"));
   }
 
+  @ExceptionHandler(org.springframework.web.HttpMediaTypeNotAcceptableException.class)
+  public ResponseEntity<Map<String, Object>> handleAccept(Exception ex) {
+    return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE)
+        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+        .body(errorBody(406, "Requested response format is not available"));
+  }
+
   @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
   public ResponseEntity<Map<String, Object>> handleMedia(Exception ex) {
     return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)

@@ -103,6 +103,7 @@ class WebSocketDeliveryTest {
       if (subscriber != null && subscriber.isConnected()) subscriber.disconnect();
       if (attacker != null && attacker.isConnected()) attacker.disconnect();
       client.stop();
+      events.deleteById(event.getId());
     }
   }
 }

@@ -11,7 +11,7 @@ Scope: implemented customer, organizer and developer functionality, API authoriz
 | First login | Concurrent provisioning inside a business transaction could mark that transaction rollback-only after a unique-key race. PostgreSQL `ON CONFLICT DO NOTHING` now arbitrates identity creation on the existing transaction connection. This avoids both rollback poisoning and pool exhaustion from suspended transactions; identities are never linked by email. | `AccountSecurityTest.concurrentFirstLoginDoesNotPoisonOuterBusinessTransactions` |
 | Inventory | Public availability included held seats and zone spaces with no remaining ticket quota. Starting prices included unavailable inventory. Counts and prices now use selectable inventory. | `OrganizerFlowTest.eventCountsAndStartingPriceExcludeHeldSeatsAndExhaustedTicketTiers` |
 | Layout validation | Null list elements could cause server errors; nearby seat coordinates could produce overlapping buttons. Nested elements and 22 × 22 positions are validated consistently. | Organizer API and browser tests |
-| HTTP failures | Unsupported methods/media types and missing resources could become generic 500 errors. They now preserve 405/415/404 semantics; invalid JSON/fractional integer fields return 400. Infrastructure connection failures return 503 without private provider details. | Account-security and rate-limit boundary tests |
+| HTTP failures | Unsupported methods/media types and missing resources could become generic 500 errors. They now preserve 405/406/415/404 semantics; invalid JSON/fractional integer fields return 400. Infrastructure connection failures return 503 without private provider details. | Account-security and rate-limit boundary tests |
 | Customer quantities | Fractional/out-of-range GA input displayed a different quantity from the computed total. Quantity is now integral and clamped; sold-out selection shows zero. | Desktop/mobile browser checks |
 | Customer interaction | Availability polling replaced focused age inputs; category highlighting was lost after navigation; a stale failed event load could overwrite a newer route. Focus/state and route ownership are preserved. Non-JSON gateway errors now show a recoverable service message instead of a parser exception. | Browser checks and route guards |
 | Organizer async operations | Delayed event loads or saves could replace a newly opened event. Requests now check route generations before updating the current editor. Forms cannot be edited during save. | Slow-load and slow-save browser regressions |
@@ -20,9 +20,13 @@ Scope: implemented customer, organizer and developer functionality, API authoriz
 | Diagnostics | Failure-path behavior needed explicit verification. Database failures are reported as failed runs, never successful metrics. | `DiagnosticsFailureTest`, developer browser failure check |
 | Runtime dependencies | The old Spring Boot 3.2.5 baseline had published dependency advisories. Upgraded to 3.5.16 plus compatible patches for Tomcat, Jackson, Netty, PostgreSQL JDBC, HttpComponents and Log4j API. Added the PostgreSQL Flyway module. | Complete regression suite, provider checks and OSV recheck |
 
+A CI run also exposed a legacy test-order assumption: standing events can legitimately have zero assigned seats, so the catalog test now asserts its intended seeded event rather than the first result. Temporary WebSocket fixtures are removed after their check.
+
+JSON API requests are additionally bounded to 1 MB before parsing, including chunked bodies. Multipart storage retains its separate 5 MB limit. This prevents allocation of arbitrarily large inventory arrays before DTO validation can reject them. Boundary and chunked-body checks cover the filter.
+
 ## Verification
 
-- Local backend suite: **84 passed**, one optional provider test skipped in ordinary CI.
+- Local backend suite: **87 passed**, one optional provider test skipped in ordinary CI.
 - That optional provider test was run separately: **1 passed**, using real Neon database reads and private storage upload/list/download/anonymous denial/delete/404, with cleanup.
 - **22 Playwright checks passed** across desktop and mobile. They are committed and run in GitHub Actions, using explicit fixture identities and API responses. They do not impersonate a live account.
 - **22 critical integration cases also passed on a disposable Neon branch** with a three-connection pool. This repeated subset included identity races, organizer ownership/publishing/inventory and diagnostics. The branch was deleted afterward.

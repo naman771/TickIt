@@ -298,6 +298,8 @@ class AccountSecurityTest {
             post("/api/holds").with(identity).contentType(MediaType.TEXT_PLAIN).content("not json"))
         .andExpect(status().isUnsupportedMediaType());
     mvc.perform(get("/missing-file.js")).andExpect(status().isNotFound());
+    mvc.perform(get("/api/events").accept(MediaType.APPLICATION_XML))
+        .andExpect(status().isNotAcceptable());
     mvc.perform(
             post("/api/holds")
                 .with(identity)
@@ -307,5 +309,27 @@ class AccountSecurityTest {
     mvc.perform(
             post("/api/holds").with(identity).contentType(MediaType.APPLICATION_JSON).content("{"))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void oversizedJsonIsRejectedBeforeDeserialization() throws Exception {
+    byte[] body =
+        ("{\"padding\":\"" + "x".repeat(com.tickit.filter.JsonBodyLimitFilter.MAX_BYTES) + "\"}")
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    var identity = jwt().jwt(j -> j.issuer(ISSUER).subject("auth_test_owner"));
+    mvc.perform(
+            post("/api/holds").with(identity).contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isPayloadTooLarge());
+    mvc.perform(
+            post("/api/holds")
+                .with(identity)
+                .contentType("application/vnd.tickit+json")
+                .content(body)
+                .with(
+                    request -> {
+                      request.removeHeader("Content-Length");
+                      return request;
+                    }))
+        .andExpect(status().isPayloadTooLarge());
   }
 }
