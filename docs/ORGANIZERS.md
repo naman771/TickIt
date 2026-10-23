@@ -1,5 +1,7 @@
 # Organizer workspace
 
+Live organizer site: https://tickit-organizers.onrender.com
+
 The organizer frontend is a separate static website. Customer pages contain no organizer navigation. It shares the existing authenticated Spring Boot API, Neon database and Clerk identity provider; it does not grant developer privileges.
 
 ## Create and publish an event
@@ -37,3 +39,5 @@ For local development, allow `http://localhost:8081,http://localhost:8083` in th
 ## Validation
 
 Thirteen integration tests cover ownership, role separation, draft privacy, custom layouts, stale revisions, publishing locks, invalid inputs, sales windows and concurrent reservations across shared-price tiers. The V3 migration and these flows also passed on a temporary Neon copy of production; that branch was removed afterward. Browser checks use explicit UI fixtures and cover CSV import/export, custom seating, mixed admission, preview, publishing, INR pricing, GA quantities and mobile layout. No sample organizer events were inserted into the public catalog.
+
+The live organizer origin was tested with real Clerk scripts and the production API: Google sign-in UI loaded, cross-origin requests reached protected routes, and no browser errors occurred. Completing OAuth and creating a real event uses the organizer's own session; automated flow data stayed in isolated tests.

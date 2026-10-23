@@ -1,6 +1,7 @@
 # Hosted environment
 
 - Customer website: https://tickit-mpy2.onrender.com
+- Organizer website: https://tickit-organizers.onrender.com
 - Restricted developer workspace: https://tickit-mpy2.onrender.com/developer/
 - Health endpoint: https://tickit-mpy2.onrender.com/actuator/health
 
@@ -16,7 +17,7 @@ The deployment uses the existing Clerk development instance and test-prefixed ke
 
 Render Free sleeps when idle; cold starts on this Spring Boot application can take several minutes. Its Redis-compatible store is non-durable. Neon Free has compute and storage quotas. No paid upgrades are authorized.
 
-The new Neon catalog is empty. The previous local sample catalog was not migrated. Paid checkout and transactional email remain disabled. Existing users can sign in with the same Clerk account; the backend provisions the corresponding local account record on first use against Neon.
+The catalog is populated by organizers publishing their own event drafts. The previous local sample catalog was not migrated, and no test events were inserted into production. Paid checkout and transactional email remain disabled. Existing users can sign in with the same Clerk account; the backend provisions the corresponding local account record on first use against Neon.
 
 ## Updating the app
 
@@ -40,3 +41,11 @@ Verified on the public origin after the final connected-auth rollout:
 | Render web and Redis plans | Free |
 
 The browser check waited for Clerk to finish initialization before clicking sign-in. Completing Google OAuth as a real user and authenticated storage actions on the public origin remain user-session checks; no account session was impersonated for verification.
+
+## Organizer deployment
+
+The organizer frontend is a separate Render static site at `tickit-organizers.onrender.com`, built from `scripts/build-organizer.mjs`. It uses the same backend through an exact-origin CORS allowlist. Both customer and organizer origins are authorized for Clerk session tokens; accounts do not gain developer permissions by registering as an organizer. The database owns event drafts, publication state, layout snapshots and shared admission pools through V3. Frontend-only separation is not used as an authorization boundary.
+
+Both organizer and customer interfaces remain on free hosting. The organizer static site does not need a second Java/Redis/Postgres deployment. Real paid checkout, production identity/domain configuration, organizer cancellations and edits to published events remain future work.
+
+The organizer rollout was verified on its public URL: the real Clerk modal includes Google sign-in, cross-origin API access works, organizer profile requires authentication (401), untrusted origins receive 403, the new admission route returns 404 for an unknown event, and backend health is UP. The final application revision passed GitHub CI. Browser verification did not impersonate an account or insert events into the production catalog.

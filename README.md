@@ -4,7 +4,7 @@
 
 A ticketing application with live seat selection, temporary reservations, and a checkout backed by PostgreSQL and Redis. Built with Java 21 and Spring Boot.
 
-[Live website](https://tickit-mpy2.onrender.com) · [Developer workspace](https://tickit-mpy2.onrender.com/developer/) · [Deployment notes](docs/HOSTED_ENVIRONMENT.md)
+[Live website](https://tickit-mpy2.onrender.com) · [Organizers](https://tickit-organizers.onrender.com) · [Developer workspace](https://tickit-mpy2.onrender.com/developer/) · [Deployment notes](docs/HOSTED_ENVIRONMENT.md)
 
 [Getting started](#getting-started) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Walkthrough](docs/DEMO.md) · [CI](https://github.com/naman771/TickIt/actions)
 
@@ -66,7 +66,7 @@ DB_USER="$(whoami)" mvn verify
 
 Customer signup and Google sign-in use Clerk. The API verifies signed sessions and isolates each account's bookings. A separate [developer workspace](docs/PRODUCTION_SETUP.md#developer-workspace) uses a server-side access allowlist.
 
-The [organizer workspace](docs/ORGANIZERS.md) manages private event drafts, custom seat layouts and standing-admission ticket pools. Organizers publish their own events to the customer catalog; each event retains its own layout and prices.
+The [organizer workspace](docs/ORGANIZERS.md) manages private event drafts, custom seat layouts and standing-admission ticket pools. Organizers publish their own events to the customer catalog; each event retains its own layout and prices. [See the organizer workspace →](docs/images/tickit-organizers.png)
 
 Without provider configuration the website permits browsing and keeps protected operations closed. Real payment checkout is the next phase; the API cannot issue unpaid tickets. Sample catalog seeding is opt-in for local development.
 
