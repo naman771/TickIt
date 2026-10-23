@@ -4,6 +4,8 @@
 
 A ticketing application with live seat selection, temporary reservations, and a checkout backed by PostgreSQL and Redis. Built with Java 21 and Spring Boot.
 
+[Live website](https://tickit-mpy2.onrender.com) · [Developer workspace](https://tickit-mpy2.onrender.com/developer/) · [Deployment notes](docs/HOSTED_ENVIRONMENT.md)
+
 [Getting started](#getting-started) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Walkthrough](docs/DEMO.md) · [CI](https://github.com/naman771/TickIt/actions)
 
 ![TickIt — event discovery](docs/images/tickit-desktop.png)
