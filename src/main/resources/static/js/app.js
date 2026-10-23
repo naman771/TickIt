@@ -242,7 +242,7 @@ function renderSeatMap() {
       })
       .join(
         "",
-      )}${state.seats.map((s) => `<button class="seat ${s.status.toLowerCase()} ${state.selectedSeats.includes(s.seatId) ? "selected" : ""}" data-seat="${s.seatId}" data-status="${s.status}" style="position:absolute;left:${s.x}px;top:${s.y}px" title="${esc(s.label)}" aria-label="${esc(s.label)}, ${money(s.price, s.currency)}, ${esc(s.status.toLowerCase())}" ${s.status === "BOOKED" || (s.status === "HELD" && !owns(s)) ? "disabled" : ""}>${s.number}</button>`).join("")}</div>`;
+      )}${state.seats.map((s) => `<button class="seat ${s.status.toLowerCase()} ${state.selectedSeats.includes(s.seatId) ? "selected" : ""}" data-seat="${s.seatId}" data-status="${s.status}" style="position:absolute;left:${s.x}px;top:${s.y}px" title="${esc(s.label)}" aria-pressed="${state.selectedSeats.includes(s.seatId)}" aria-label="${esc(s.label)}, ${money(s.price, s.currency)}, ${esc(s.status.toLowerCase())}" ${s.status === "BOOKED" || (s.status === "HELD" && !owns(s)) ? "disabled" : ""}>${s.number}</button>`).join("")}</div>`;
     const oldStage = document.querySelector(".map-panel > .stage");
     if (oldStage) oldStage.hidden = true;
     document.getElementById("availabilityCount").textContent =
@@ -285,7 +285,7 @@ function renderCheckout() {
   );
   state.selectedSeats = seats.map((s) => s.seatId);
   const total = seats.reduce((n, s) => n + Number(s.price), 0);
-  box.innerHTML = `<h2>Your selection</h2><p class="checkout-user">${seats.length} / ${Math.min(3, state.event?.perOrderLimit || 3)} seats selected per account for this event</p>${seats.length ? seats.map((s) => `<div class="selected-summary"><strong>${esc(s.section || "Main")} · ${esc(s.label)}</strong><span>${money(s.price)}</span><button class="inline-button" data-deselect-seat="${s.seatId}" aria-label="Remove ${esc(s.label)}">Remove</button></div>`).join("") : '<div class="checkout-empty">Choose up to three available seats on the map.</div>'}<div class="checkout-line checkout-total"><span>Total (${esc(state.event?.currency || "USD")})</span><strong>${money(total)}</strong></div>${seats.length ? ageDeclaration() : ""}${!state.user && seats.length ? '<button class="primary-button" data-auth="sign-in">Sign in to continue</button>' : '<button class="primary-button" disabled>Checkout unavailable</button>'}<p class="checkout-user">Online checkout is not yet available. Selecting seats does not reserve them or confirm a booking.</p>`;
+  box.innerHTML = `<h2>Your selection</h2><p class="checkout-user">${seats.length} / ${Math.min(3, state.event?.perOrderLimit || 3)} seats selected per account for this event</p>${seats.length ? seats.map((s) => `<div class="selected-summary"><strong>${esc(s.label)}</strong><span>${money(s.price)}</span><button class="inline-button" data-deselect-seat="${s.seatId}" aria-label="Remove ${esc(s.label)}">Remove</button></div>`).join("") : '<div class="checkout-empty">Choose up to three available seats on the map.</div>'}<div class="checkout-line checkout-total"><span>Total (${esc(state.event?.currency || "USD")})</span><strong>${money(total)}</strong></div>${seats.length ? ageDeclaration() : ""}${!state.user && seats.length ? '<button class="primary-button" data-auth="sign-in">Sign in to continue</button>' : '<button class="primary-button" disabled>Checkout unavailable</button>'}<p class="checkout-user">Online checkout is not yet available. Selecting seats does not reserve them or confirm a booking.</p>`;
 }
 async function refreshSeats() {
   const eventId = state.event?.id;
