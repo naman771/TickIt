@@ -50,6 +50,8 @@ spring:
 
 # ── Application ─────────────────────────────────────────
 app:
+  organizer:
+    host: ${ORGANIZER_HOST:organizers.tickit.site}
   storage:
     enabled: ${APP_STORAGE_ENABLED:false}
     bucket: ${NEON_STORAGE_BUCKET:assets}

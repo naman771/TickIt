@@ -50,7 +50,7 @@ Prefer running Java locally? See [local development and configuration](docs/DEVE
 
 ## Verification
 
-**48 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
+**61 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
 
 An additional opt-in live Neon test verifies database reads and private storage upload, listing, download integrity, anonymous denial and deletion. CI runs the local suite against PostgreSQL and Redis, validates Docker Compose, and builds the container. [Validation details →](docs/VALIDATION.md)
 
@@ -65,6 +65,8 @@ DB_USER="$(whoami)" mvn verify
 ## Accounts and deployment
 
 Customer signup and Google sign-in use Clerk. The API verifies signed sessions and isolates each account's bookings. A separate [developer workspace](docs/PRODUCTION_SETUP.md#developer-workspace) uses a server-side access allowlist.
+
+The [organizer workspace](docs/ORGANIZERS.md) manages private event drafts, custom seat layouts and standing-admission ticket pools. Organizers publish their own events to the customer catalog; each event retains its own layout and prices.
 
 Without provider configuration the website permits browsing and keeps protected operations closed. Real payment checkout is the next phase; the API cannot issue unpaid tickets. Sample catalog seeding is opt-in for local development.
 

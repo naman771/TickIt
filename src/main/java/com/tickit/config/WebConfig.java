@@ -9,13 +9,18 @@ import org.springframework.web.servlet.config.annotation.*;
 @RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
 
-    private final RateLimiterInterceptor rateLimiterInterceptor;
+  private final RateLimiterInterceptor rateLimiterInterceptor;
 
-    @Override
-    public void addInterceptors(InterceptorRegistry registry) {
-        // Apply rate limiting to booking endpoints
-        registry.addInterceptor(rateLimiterInterceptor)
-                .addPathPatterns("/api/bookings/**", "/api/holds/**");
-    }
-
+  @Override
+  public void addInterceptors(InterceptorRegistry registry) {
+    // Apply rate limiting to booking endpoints
+    registry
+        .addInterceptor(rateLimiterInterceptor)
+        .addPathPatterns(
+            "/api/bookings/**",
+            "/api/holds/**",
+            "/api/organizer/**",
+            "/api/events/*/admission-holds",
+            "/api/events/admission-holds/**");
+  }
 }

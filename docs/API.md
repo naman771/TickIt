@@ -72,3 +72,19 @@ All routes below require a verified session whose subject is in `DEVELOPER_SUBJE
 | POST | `/api/developer/assets` | Multipart field `file`, 1 byte–5 MB; returns 201 with `{id, size}`. |
 | GET | `/api/developer/assets/{id}` | Download a private object as an attachment; unknown object returns 404. |
 | DELETE | `/api/developer/assets/{id}` | Delete a workspace object; returns 204. |
+
+## Organizer catalog
+
+All `/api/organizer/**` routes require authentication. Every event lookup/update/publish checks the current organizer owner; unrelated IDs return 404. Organizer enrollment does not grant developer access.
+
+| Method | Route | Behavior |
+|---|---|---|
+| GET / POST | `/api/organizer/profile` | Read/create the authenticated user's organizer workspace. |
+| GET / POST | `/api/organizer/events` | List owned events / create a private draft. |
+| GET / PUT | `/api/organizer/events/{id}` | Read an owned event / replace an owned draft with its current revision. |
+| POST | `/api/organizer/events/{id}/publish` | Publish the saved draft using `{version}` after validation. |
+| GET | `/api/events/{id}/admission` | Published-event zones, shared capacity and ticket prices/availability. |
+| POST | `/api/events/{id}/admission-holds` | Authenticated quantity hold: `{ticketTypeId,quantity}`; whole quantity or 409. |
+| DELETE | `/api/events/admission-holds/{id}` | Release a quantity hold owned by the authenticated account. |
+
+`GET /api/events` returns published events only. Event metadata includes category, currency, timezone/start instant, admission mode, capacity, ticket availability and stage coordinates. `totalSeats` remains the count of assigned seats; general-admission capacity is separate. Seat responses include section, row/number, x/y position and currency. New organizer events are priced in INR. See [organizer guide](ORGANIZERS.md) for inventory limits and publication behavior.

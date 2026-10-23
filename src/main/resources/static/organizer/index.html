@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>TickIt Organizers — Make it happen</title>
+    <link rel="stylesheet" href="./organizer.css" />
+    <script src="./config.js"></script>
+    <script defer src="/js/auth.js"></script>
+    <script defer src="./organizer.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#"
+        ><span>tickit<span class="dot">.</span></span
+        ><small>ORGANIZERS</small></a
+      >
+      <nav id="account">
+        <button class="text-button" data-auth="sign-in">Sign in</button
+        ><button class="primary" data-auth="sign-up">
+          Start hosting <span>↗</span>
+        </button>
+      </nav>
+    </header>
+    <main id="workspace"></main>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <footer>
+      <span>Good experiences start here.</span
+      ><span>TickIt Organizer Workspace</span>
+    </footer>
+  </body>
+</html>

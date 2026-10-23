@@ -1,6 +1,8 @@
 "use strict";
 // Shared identity client. Secrets and authorization decisions stay on the server.
 window.TickItAuth = (() => {
+  const base = window.TICKIT_API_BASE || "";
+  let initialization = null;
   let clerk = null;
   let config = {};
   let user = null;
@@ -16,7 +18,7 @@ window.TickItAuth = (() => {
       emit();
       return;
     }
-    const response = await fetch("/api/me", {
+    const response = await fetch(`${base}/api/me`, {
       headers: { Authorization: `Bearer ${bearer}` },
     });
     if (!response.ok) {
@@ -40,8 +42,8 @@ window.TickItAuth = (() => {
       document.head.append(script);
     });
   }
-  async function init() {
-    const response = await fetch("/api/public/config");
+  async function initialize() {
+    const response = await fetch(`${base}/api/public/config`);
     if (!response.ok)
       throw new Error("Account settings are temporarily unavailable.");
     config = await response.json();
@@ -74,7 +76,23 @@ window.TickItAuth = (() => {
       ),
     );
   }
-  function open(kind) {
+  function init() {
+    if (!initialization)
+      initialization = initialize().catch((error) => {
+        initialization = null;
+        throw error;
+      });
+    return initialization;
+  }
+  async function open(kind) {
+    try {
+      await init();
+    } catch (error) {
+      window.dispatchEvent(
+        new CustomEvent("tickit:auth-error", { detail: error.message }),
+      );
+      return;
+    }
     if (!clerk) {
       window.dispatchEvent(
         new CustomEvent("tickit:auth-error", {

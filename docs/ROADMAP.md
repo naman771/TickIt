@@ -19,3 +19,7 @@ The original delivery phases remain the structure for further work. The current 
 | 13. Deployment | Local ready | Docker Compose. Hosted staging and Kubernetes remain. |
 
 Before a public launch: authentication, payment integration and reconciliation, request idempotency, durable notification delivery, deployment observability, dependency upgrades, and a broader failure/load-testing programme.
+
+## Organizer catalog update
+
+Organizer-owned drafts, event-specific seating, shared-capacity standing ticket types and validated publishing are implemented. The customer frontend renders custom layouts and GA quantity selection. Paid checkout, GA confirmed order lines, ticket issuance, organizer cancellations/rescheduling, public poster uploads, reusable verified named-venue libraries and edits to published layouts remain future work.

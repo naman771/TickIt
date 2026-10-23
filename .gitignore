@@ -41,3 +41,6 @@ node_modules/
 .agents/skills/
 .codex/config.toml
 skills-lock.json
+
+# Static organizer deployment output
+dist/

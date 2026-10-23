@@ -38,3 +38,7 @@ Still required: live Google/email signup with the user's Clerk application, auth
 ## Neon integration validation
 
 The expanded local suite now has 48 passing tests, including provider URL conversion, production/test database isolation, developer asset authorization and upload limits. One additional live-cloud test is skipped in ordinary CI and passes separately when explicitly enabled. It verifies real Neon database reads plus private storage upload, list, byte-identical download, anonymous denial, delete and subsequent 404 through application controllers. Browser checks cover the developer file controls and mobile layout with explicit UI fixtures; they do not claim a real browser OAuth session was exercised.
+
+## Organizer catalog validation
+
+The local suite now passes 61 tests; one optional live-storage test is skipped by default. Thirteen organizer integration tests validate owner-only access, private drafts, custom map persistence, publication locks, revisions, admission-mode/capacity validation, sales windows, exact-origin CORS, and concurrent reservations across ticket tiers. The V3 migration and all thirteen organizer tests also passed on an isolated Neon branch, which was then deleted. Browser fixtures verified organizer creation/editing, CSV import/export, preview and publishing controls, custom customer layouts, INR pricing, standing quantities and mobile layout. No test events were published into the production catalog.
