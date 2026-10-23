@@ -62,6 +62,30 @@ public class RazorpayHttpGateway implements RazorpayGateway {
         .toList();
   }
 
+  public Refund createRefund(String paymentId, long amount, UUID key) {
+    var body = new LinkedHashMap<String, Object>();
+    body.put("amount", amount);
+    body.put("speed", "normal");
+    body.put("receipt", key.toString());
+    return asRefund(call("POST", "payments/" + id(paymentId) + "/refund", body, key.toString()));
+  }
+
+  public Refund refund(String refundId) {
+    if (refundId == null || !refundId.matches("rfnd_[A-Za-z0-9]{1,64}"))
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid refund reference");
+    return asRefund(call("GET", "refunds/" + refundId, null));
+  }
+
+  private Refund asRefund(JsonNode n) {
+    return new Refund(
+        n.path("id").asText(),
+        n.path("payment_id").asText(),
+        n.path("amount").asLong(),
+        n.path("currency").asText(),
+        n.path("status").asText(),
+        n.path("receipt").asText());
+  }
+
   private String id(String id) {
     if (id == null || !id.matches("(?:order|pay)_[A-Za-z0-9]{1,64}"))
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid payment reference");
@@ -82,10 +106,15 @@ public class RazorpayHttpGateway implements RazorpayGateway {
         n.path("order_id").asText(),
         n.path("amount").asLong(),
         n.path("currency").asText(),
-        n.path("status").asText());
+        n.path("status").asText(),
+        n.path("amount_refunded").asLong());
   }
 
   private JsonNode call(String method, String path, Object body) {
+    return call(method, path, body, null);
+  }
+
+  private JsonNode call(String method, String path, Object body, String refundKey) {
     try {
       var request =
           HttpRequest.newBuilder(URI.create("https://api.razorpay.com/v1/" + path))
@@ -98,6 +127,7 @@ public class RazorpayHttpGateway implements RazorpayGateway {
                           .encodeToString(
                               (settings.getKeyId() + ":" + settings.getKeySecret())
                                   .getBytes(StandardCharsets.UTF_8)));
+      if (refundKey != null) request.header("X-Refund-Idempotency", refundKey);
       if (body != null)
         request
             .header("Content-Type", "application/json")

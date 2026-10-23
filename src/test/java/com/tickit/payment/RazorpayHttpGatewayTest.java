@@ -97,4 +97,64 @@ class RazorpayHttpGatewayTest {
     assertEquals(503, ex.getStatusCode().value());
     assertFalse(ex.getMessage().contains("private network"));
   }
+
+  @Test
+  void normalRefundUsesPersistentIdempotencyKeyAndNoInstantSpeed() throws Exception {
+    UUID key = UUID.randomUUID();
+    respond(
+        200,
+        "{\"id\":\"rfnd_fixture\",\"payment_id\":\"pay_fixture\",\"amount\":50000,\"currency\":\"INR\",\"status\":\"pending\",\"receipt\":\""
+            + key
+            + "\"}");
+    var refund = gateway.createRefund("pay_fixture", 50000, key);
+    assertEquals("pending", refund.status());
+    assertEquals(key.toString(), refund.receipt());
+    var captor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(client).send(captor.capture(), any());
+    var request = captor.getValue();
+    assertEquals(
+        "https://api.razorpay.com/v1/payments/pay_fixture/refund", request.uri().toString());
+    assertEquals(
+        key.toString(), request.headers().firstValue("X-Refund-Idempotency").orElseThrow());
+    var bytes = new java.io.ByteArrayOutputStream();
+    request
+        .bodyPublisher()
+        .orElseThrow()
+        .subscribe(
+            new java.util.concurrent.Flow.Subscriber<java.nio.ByteBuffer>() {
+              public void onSubscribe(java.util.concurrent.Flow.Subscription subscription) {
+                subscription.request(Long.MAX_VALUE);
+              }
+
+              public void onNext(java.nio.ByteBuffer value) {
+                while (value.hasRemaining()) bytes.write(value.get());
+              }
+
+              public void onError(Throwable error) {
+                throw new AssertionError(error);
+              }
+
+              public void onComplete() {}
+            });
+    var body = new ObjectMapper().readTree(bytes.toByteArray());
+    assertEquals(50000, body.path("amount").asLong());
+    assertEquals("normal", body.path("speed").asString());
+    assertEquals(key.toString(), body.path("receipt").asString());
+  }
+
+  @Test
+  void refundFetchValidatesReferenceAndUsesFixedProviderOrigin() throws Exception {
+    assertThrows(
+        ResponseStatusException.class, () -> gateway.refund("https://other.example/refund"));
+    verifyNoInteractions(client);
+    respond(
+        200,
+        "{\"id\":\"rfnd_fixture\",\"payment_id\":\"pay_fixture\",\"amount\":100,\"currency\":\"INR\",\"status\":\"processed\"}");
+    assertEquals("processed", gateway.refund("rfnd_fixture").status());
+    var captor = ArgumentCaptor.forClass(HttpRequest.class);
+    verify(client).send(captor.capture(), any());
+    assertEquals(
+        "https://api.razorpay.com/v1/refunds/rfnd_fixture", captor.getValue().uri().toString());
+    assertEquals("GET", captor.getValue().method());
+  }
 }

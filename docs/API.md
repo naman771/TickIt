@@ -133,3 +133,9 @@ Authenticated event owners use `PUT /api/organizer/events/{id}` with the full cu
 To reschedule, update `startTime`/`endTime`/`timezone` and supply `changeReason`. To cancel: `POST /api/organizer/events/{id}/cancel` with `{ "version": 1, "reason": "Venue unavailable" }`. To archive: `DELETE /api/organizer/events/{id}` with the same body shape. All require ownership and the current revision; stale requests return 409. Archival preserves payment and booking history.
 
 Public event responses now include `version`, `status`, `changeNote` and `scheduleChanged`. Payment creation requires `eventVersion` alongside the selected event ID. Account booking/payment responses include an `event` summary even when the event is cancelled or deleted from the catalog.
+
+## Automatic full refunds
+
+Cancellation/deletion and verified captures without tickets queue durable refunds automatically. Payment order responses include `refund: {status, amount, currency, providerRefundId, reason}` when a job exists. Booking/payment history is retained; checkout `status` records the booking outcome while `refund.status` records returned funds. Refund states are `QUEUED`, `RETRY`, `PENDING`, `PROCESSED`, `FAILED`, `REVIEW`.
+
+`GET /api/developer/payments/refunds` is developer-only and lists up to 100 recent refund jobs and sanitized errors. Customer accounts cannot initiate arbitrary refunds or access this queue. Signed `refund.created`, `refund.processed` and `refund.failed` webhook events are supported on the existing payment webhook URL; the server re-fetches provider state. Periodic polling reconciles pending refunds without requiring those extra webhook subscriptions.

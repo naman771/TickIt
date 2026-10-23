@@ -36,6 +36,7 @@ import tools.jackson.databind.ObjectMapper;
       "app.storage.enabled=false",
       "app.payments.enabled=true",
       "app.payments.reconciliation-enabled=false",
+      "app.payments.refunds-enabled=false",
       "spring.datasource.hikari.maximum-pool-size=3",
       "spring.datasource.hikari.minimum-idle=0"
     })

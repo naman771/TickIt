@@ -6,7 +6,7 @@ Published updates preserve seat IDs. Booked seats cannot be deleted or relabelle
 
 Owners can move an event earlier or later with a reason and a future start time. Cancellation removes it from public sale; deletion archives it from both the public catalog and organizer list. All operations use owner authorization, the current event revision and an event row lock. Changes are audited. Confirmed ticket history retains event details and shows cancellation or rescheduling even after catalog removal.
 
-Pending checkouts expire on rescheduling, cancellation or deletion. Captures against obsolete revisions enter payment review rather than assigning inventory. Cancelled confirmed orders appear in the developer review API for refund follow-up. Refunds and customer email notifications are not automatic.
+Pending checkouts expire on rescheduling, cancellation or deletion. Captures against obsolete revisions enter payment review rather than assigning inventory. Cancelled confirmed orders appear in the developer review API for refund follow-up. Full refunds are now automatic for cancelled/deleted events and verified captures without tickets; see [refund behavior](REFUNDS.md). Customer email notifications remain pending.
 
 ## Verification
 

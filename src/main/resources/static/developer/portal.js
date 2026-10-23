@@ -103,7 +103,7 @@ function render(section) {
       items: [
         "Create server-side orders from authoritative ticket prices.",
         "Verify signatures, captured payment status and webhook authenticity.",
-        "Duplicate callbacks are idempotent; late captures enter review. Refund automation remains pending.",
+        "Cancelled events and verified captures without tickets queue automatic full refunds. Retries reuse the same provider idempotency key.",
       ],
       href: "https://razorpay.com/docs/payments/",
       label: "Razorpay documentation",
@@ -124,8 +124,41 @@ function render(section) {
   };
   const d = details[section];
   content.innerHTML = `<div class="section-title"><div><div class="eyebrow">INTEGRATIONS / ${d.provider.toUpperCase()}</div><h1>${d.title}</h1></div>${badge(d.ready)}</div><div class="integration-detail"><section class="panel"><h2>${d.provider}</h2><p>${d.copy}</p><ul>${d.items.map((item) => `<li>${item}</li>`).join("")}</ul><a class="doc-link" href="${d.href}" target="_blank" rel="noopener">${d.label} ↗</a></section></div>`;
+  if (section === "payments") {
+    content.insertAdjacentHTML(
+      "beforeend",
+      '<section class="panel"><h2>Automatic refunds</h2><p>Full refunds are queued after cancellation or when captured payments cannot issue tickets. Failed or review states require follow-up.</p><button class="refresh" data-refund-refresh>Refresh refunds</button><div id="refundList" role="status" aria-live="polite">Loading refunds…</div></section>',
+    );
+    loadRefunds();
+  }
+}
+async function loadRefunds() {
+  const box = document.getElementById("refundList");
+  if (!box) return;
+  const user = TickItAuth.user?.id;
+  try {
+    const response = await fetch("/api/developer/payments/refunds", {
+      headers: { Authorization: `Bearer ${await TickItAuth.token()}` },
+    });
+    if (!response.ok)
+      throw new Error("Refund tracking is temporarily unavailable.");
+    const rows = await response.json();
+    if (!box.isConnected || TickItAuth.user?.id !== user) return;
+    box.innerHTML = rows.length
+      ? rows
+          .map(
+            (r) =>
+              `<div class="status-row"><div><strong>${escapeHtml(r.order_id.slice(0, 8))}</strong><p>${escapeHtml(r.reason.replaceAll("_", " "))} · ${escapeHtml(r.currency)} ${(Number(r.amount) / 100).toFixed(2)}</p>${r.last_error ? `<small>${escapeHtml(r.last_error)}</small>` : ""}</div><span class="badge ${["FAILED", "REVIEW"].includes(r.status) ? "pending" : ""}">${escapeHtml(r.status)}</span></div>`,
+          )
+          .join("")
+      : "No refunds have been requested.";
+  } catch (error) {
+    if (box.isConnected && TickItAuth.user?.id === user)
+      box.textContent = error.message;
+  }
 }
 document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-refund-refresh]")) loadRefunds();
   const auth = event.target.closest("[data-auth]")?.dataset.auth;
   if (auth === "sign-out") {
     TickItAuth.signOut().then(() => location.reload());

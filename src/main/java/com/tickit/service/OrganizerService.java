@@ -20,6 +20,7 @@ public class OrganizerService {
   private final AdmissionHoldRepository admissionHolds;
   private final org.springframework.jdbc.core.JdbcTemplate jdbc;
   private final com.tickit.payment.CheckoutService checkout;
+  private final com.tickit.payment.RefundService refunds;
   private final org.springframework.messaging.simp.SimpMessagingTemplate messages;
   private final jakarta.persistence.EntityManager entityManager;
   private final OrganizerAccountRepository organizers;
@@ -332,6 +333,7 @@ public class OrganizerService {
     event.setChangeNote(reason.trim());
     event.setUpdatedAt(Instant.now());
     events.saveAndFlush(event);
+    refunds.enqueueEligible(id);
     notifyAfterCommit(id);
     return view(event);
   }

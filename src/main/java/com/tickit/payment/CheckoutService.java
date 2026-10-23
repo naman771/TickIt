@@ -19,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Slf4j
 public class CheckoutService {
   private final PaymentSettings settings;
+  private final RefundService refunds;
   private final EventSnapshots eventSnapshots;
   private final CheckoutStore store;
   private final org.springframework.jdbc.core.JdbcTemplate jdbc;
@@ -333,6 +334,12 @@ public class CheckoutService {
       throw error(400, "Invalid webhook payload");
     }
     String event = message.path("event").asText();
+    if (Set.of("refund.created", "refund.processed", "refund.failed").contains(event)) {
+      String refundId = message.path("payload").path("refund").path("entity").path("id").asText();
+      if (!refundId.matches("rfnd_[A-Za-z0-9]{1,64}")) throw error(400, "Missing refund reference");
+      refunds.webhook(refundId);
+      return;
+    }
     if (!Set.of("payment.captured", "order.paid").contains(event)) return;
     String paymentId = message.path("payload").path("payment").path("entity").path("id").asText();
     if (!paymentId.matches("pay_[A-Za-z0-9]{1,64}")) throw error(400, "Missing payment reference");
@@ -400,6 +407,7 @@ public class CheckoutService {
           }
           if (!available) {
             store.status(id, "REVIEW_REQUIRED", payment.id());
+            refunds.enqueueEligible(order.eventId());
             afterCommitRelease(order, items, false);
             return;
           }
@@ -499,6 +507,7 @@ public class CheckoutService {
     result.put("eventId", order.eventId());
     result.put("event", eventSnapshots.get(order.eventId()));
     result.put("status", status);
+    result.put("refund", refunds.summary(order.id()));
     result.put("amount", order.amount());
     result.put("currency", order.currency());
     result.put("providerOrderId", order.providerOrderId());

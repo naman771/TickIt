@@ -49,7 +49,7 @@ Concurrent and repeated callback/webhook deliveries serialize on the event. They
 | `CONFIRMED` | Captured payment and all inventory committed together |
 | `REVIEW_REQUIRED` | Capture was verified but inventory expired, was released or became unavailable; no partial ticket confirmation |
 
-Late captures are retained with their provider payment reference and exposed in a developer-only review queue. **Automatic refunds are not implemented.** Do not enable live acceptance until refunds, operational resolution, broader failure testing and the production account rollout are implemented. Payment review is a distinct state; it must never be presented as a booked ticket.
+Late captures are retained with their provider payment reference and exposed in a developer-only review queue. Automatic full refunds are queued for verified captures that could not issue tickets, and for paid cancelled/deleted events. See [refund behavior and retries](REFUNDS.md). Live acceptance still requires operational resolution, broader failure testing and the production account rollout. Payment review is a distinct state; it must never be presented as a booked ticket.
 
 ## Recovery and customer behavior
 
@@ -70,9 +70,9 @@ npm run build
 node scripts/build-organizer.mjs
 ```
 
-The complete local backend run: **134 tests, 0 failures, 0 errors, 2 optional provider tests skipped** (132 passing). Payment tests cover test-only configuration, server pricing, account isolation, age/quantity/currency validation, all-or-nothing holds, idempotent creates, raw-body signatures, captured versus authorized status, amount/order mismatch, duplicate and concurrent webhooks, mixed inventory, transaction rollback, uncertain-create recovery, expiry and stale same-account callbacks. The HTTP adapter is tested with a simulated client, including fixed provider origin, Basic authentication, timeouts and sanitized failures.
+The complete local backend run: **149 tests, 0 failures, 0 errors, 2 optional provider tests skipped** (147 passing). Payment tests cover test-only configuration, server pricing, account isolation, age/quantity/currency validation, all-or-nothing holds, idempotent creates, raw-body signatures, captured versus authorized status, amount/order mismatch, duplicate and concurrent webhooks, mixed inventory, transaction rollback, uncertain-create recovery, expiry and stale same-account callbacks. The HTTP adapter is tested with a simulated client, including fixed provider origin, Basic authentication, timeouts and sanitized failures.
 
-Desktop/mobile Playwright run: **38 checks passed**, including successful verification, modal dismissal/release and recovery after a failed verification response. Payment screens and network responses are explicit fixtures. A user-completed hosted test checkout was subsequently verified read-only: Razorpay reported captured and TickIt retained one matching confirmed assigned-seat booking. Automated UI checks do not operate the provider-hosted payment modal.
+Desktop/mobile Playwright run: **46 checks passed**, including successful verification, modal dismissal/release and recovery after a failed verification response. Payment screens and network responses are explicit fixtures. A user-completed hosted test checkout was subsequently verified read-only: Razorpay reported captured and TickIt retained one matching confirmed assigned-seat booking. Automated UI checks do not operate the provider-hosted payment modal.
 
 Six critical payment cases also passed against a disposable Neon branch with a three-connection pool. Flyway applied V5 on that branch; the checks exercised three-seat capture, mixed admission, concurrent webhook replay, transactional rollback, uncertain-create recovery and stale same-account callbacks. The temporary branch was deleted and CLI context restored to production. The production database was not migrated during these checks.
 
@@ -93,4 +93,4 @@ The disposable database branch was removed and production CLI context restored. 
 
 Create requests include the current public event `version` as `eventVersion`. Stale selections receive 409 and must be refreshed. Checkout lines store that revision and retain their original prices. Rescheduling, cancellation and deletion expire pending checkouts under the same event lock used for settlement. Captures arriving after such changes enter `REVIEW_REQUIRED` rather than issuing tickets against obsolete inventory. Confirmed receipts remain confirmed and include the latest event status/schedule in account history.
 
-Seat removal retires an unsold position while preserving older checkout references. Booked seats cannot be deleted or relabelled. Cancellation/deletion retains financial records and exposes confirmed payments in the developer review queue with `refundRequired: true`. This flag does not initiate a refund; manual follow-up remains necessary.
+Seat removal retires an unsold position while preserving older checkout references. Booked seats cannot be deleted or relabelled. Cancellation/deletion retains financial records and exposes confirmed payments in the developer review queue with `refundRequired: true`. Eligible orders now queue automatic full refunds. Failed or mismatched provider responses remain visible for operational follow-up; processed refunds are excluded from the unresolved review list.

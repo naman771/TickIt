@@ -38,11 +38,22 @@ public class DeveloperController {
     return jdbc.queryForList(
         "SELECT"
             + " o.id,o.event_id,o.status,o.amount,o.currency,o.provider_order_id,o.provider_payment_id,o.created_at,e.publication_status"
-            + " AS \"eventStatus\",(o.status='CONFIRMED' AND e.publication_status IN"
-            + " ('CANCELLED','DELETED')) AS \"refundRequired\" FROM checkout_order o JOIN event e"
-            + " ON e.id=o.event_id WHERE o.status IN ('REVIEW_REQUIRED','CREATE_UNKNOWN') OR"
-            + " (o.status='CONFIRMED' AND e.publication_status IN ('CANCELLED','DELETED')) ORDER BY"
-            + " o.created_at LIMIT 100");
+            + " AS \"eventStatus\",r.status AS \"refundStatus\",(o.status='CONFIRMED' AND"
+            + " e.publication_status IN ('CANCELLED','DELETED')) AS \"refundRequired\" FROM"
+            + " checkout_order o JOIN event e ON e.id=o.event_id LEFT JOIN refund_job r ON"
+            + " r.order_id=o.id WHERE (r.status IS NULL OR r.status<>'PROCESSED') AND (o.status IN"
+            + " ('REVIEW_REQUIRED','CREATE_UNKNOWN') OR (o.status='CONFIRMED' AND"
+            + " e.publication_status IN ('CANCELLED','DELETED'))) ORDER BY o.created_at LIMIT 100");
+  }
+
+  @GetMapping("/payments/refunds")
+  public java.util.List<Map<String, Object>> refunds() {
+    access.requireDeveloper();
+    return jdbc.queryForList(
+        "SELECT"
+            + " r.order_id,r.status,r.amount,r.currency,r.reason,r.provider_refund_id,r.failures,r.last_error,r.created_at,r.updated_at,o.event_id"
+            + " FROM refund_job r JOIN checkout_order o ON o.id=r.order_id ORDER BY r.created_at"
+            + " DESC LIMIT 100");
   }
 
   @GetMapping("/overview")

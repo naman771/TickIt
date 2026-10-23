@@ -389,6 +389,20 @@ function updateCountdown() {
     renderCheckout();
   }
 }
+function refundLabel(refund) {
+  if (!refund) return null;
+  if (refund.status === "PROCESSED") return "REFUND PROCESSED";
+  if (["FAILED", "REVIEW"].includes(refund.status))
+    return "REFUND NEEDS ATTENTION";
+  return refund.status === "PENDING" ? "REFUND PROCESSING" : "REFUND QUEUED";
+}
+function refundMessage(refund) {
+  if (refund.status === "PROCESSED")
+    return "The payment provider has processed your full refund. Bank credit timing depends on your payment method.";
+  if (["FAILED", "REVIEW"].includes(refund.status))
+    return "Your refund needs support follow-up. Keep your order reference; do not make another payment for this order.";
+  return "Your full refund is being handled automatically. You do not need to submit a refund request.";
+}
 async function renderTickets(sequence) {
   state.view = "tickets";
   setNav("tickets");
@@ -403,7 +417,7 @@ async function renderTickets(sequence) {
     const orders = await api("/api/payments/orders/me");
     const outstanding = orders.filter((o) => o.status !== "CONFIRMED");
     const checkoutHistory = outstanding.length
-      ? `<section class="tickets-list" aria-label="Checkout history">${outstanding.map((o) => `<article class="ticket-card"><div class="ticket-body"><div class="ticket-top"><span>${esc(o.id.slice(0, 8))}</span><b class="status-badge">${esc(o.status.replaceAll("_", " "))}</b></div><h2>${esc(state.events.find((e) => e.id === o.eventId)?.name || "Event checkout")}</h2><p>${money(o.amount / 100, o.currency)} · ${o.status === "REVIEW_REQUIRED" ? "Payment needs review; no ticket confirmed." : "Check this order before attempting another payment."}</p><button class="secondary-button" data-action="resume-checkout" data-order-id="${esc(o.id)}">View checkout</button></div></article>`).join("")}</section>`
+      ? `<section class="tickets-list" aria-label="Checkout history">${outstanding.map((o) => `<article class="ticket-card"><div class="ticket-body"><div class="ticket-top"><span>${esc(o.id.slice(0, 8))}</span><b class="status-badge">${esc(refundLabel(o.refund) || o.status.replaceAll("_", " "))}</b></div><h2>${esc(o.event?.name || state.events.find((e) => e.id === o.eventId)?.name || "Event checkout")}</h2><p>${money(o.amount / 100, o.currency)} · ${o.refund ? refundMessage(o.refund) : o.status === "REVIEW_REQUIRED" ? "Payment needs review; no ticket confirmed." : "Check this order before attempting another payment."}</p><button class="secondary-button" data-action="resume-checkout" data-order-id="${esc(o.id)}">View checkout</button></div></article>`).join("")}</section>`
       : "";
     const confirmed = orders.filter((o) => o.status === "CONFIRMED");
     const legacy = tickets.filter(
@@ -423,6 +437,7 @@ async function renderTickets(sequence) {
           bookingId: `${o.id.slice(0, 8)}-${n + 1}`,
           eventId: o.eventId,
           event: o.event,
+          refund: o.refund,
           seatLabel: `${i.label}${i.quantity > 1 ? ` × ${i.quantity}` : ""}`,
           status: o.status,
         })),
@@ -437,7 +452,7 @@ async function renderTickets(sequence) {
             .map((t) => {
               const e = t.event || state.events.find((e) => e.id === t.eventId);
               return e
-                ? `<article class="ticket-card"><img src="${esc(photo(e))}" alt=""><div class="ticket-body"><div class="ticket-top"><span>TK-${String(t.bookingId).padStart(6, "0")}</span><b class="status-badge">${["CANCELLED", "DELETED"].includes(e.status) ? "CANCELLED · REFUND PENDING" : e.scheduleChanged ? "RESCHEDULED" : "CONFIRMED"}</b></div><h2>${esc(shortName(e))} · ${esc(tour(e))}</h2>${e.changeNote ? `<p>${esc(e.changeNote)}</p>` : ""}<div class="meta-line"><span>${icon("calendar")}${esc(day(e.startInstant || e.startTime, e.timezone))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div><div class="ticket-stub"><span>YOUR SEAT</span><strong>${esc(t.seatLabel)}</strong><small>Reserved admission</small></div></article>`
+                ? `<article class="ticket-card"><img src="${esc(photo(e))}" alt=""><div class="ticket-body"><div class="ticket-top"><span>TK-${String(t.bookingId).padStart(6, "0")}</span><b class="status-badge">${refundLabel(t.refund) || (["CANCELLED", "DELETED"].includes(e.status) ? "CANCELLED · REFUND PENDING" : e.scheduleChanged ? "RESCHEDULED" : "CONFIRMED")}</b></div><h2>${esc(shortName(e))} · ${esc(tour(e))}</h2>${e.changeNote ? `<p>${esc(e.changeNote)}</p>` : ""}<div class="meta-line"><span>${icon("calendar")}${esc(day(e.startInstant || e.startTime, e.timezone))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div><div class="ticket-stub"><span>YOUR SEAT</span><strong>${esc(t.seatLabel)}</strong><small>Reserved admission</small></div></article>`
                 : "";
             })
             .join("")
@@ -777,7 +792,7 @@ function renderPaymentSummary(box) {
   if (!order || order.eventId !== state.event?.id) return false;
   const expired = new Date(order.expiresAt).getTime() <= Date.now();
   const pending = order.status === "PENDING" && !expired;
-  box.innerHTML = `<h2>${order.status === "CONFIRMED" ? "Booking confirmed" : order.status === "REVIEW_REQUIRED" ? "Payment needs review" : "Your checkout"}</h2>${order.items.map((i) => `<div class="selected-summary"><strong>${esc(i.label)}${i.quantity > 1 ? ` × ${i.quantity}` : ""}</strong><span>${money((i.unitAmount * i.quantity) / 100, order.currency)}</span></div>`).join("")}<div class="checkout-line checkout-total"><span>Total</span><strong>${money(order.amount / 100, order.currency)}</strong></div><p class="checkout-user">Reference ${esc(order.id)}</p><p class="checkout-user">${order.status === "REVIEW_REQUIRED" ? "Payment was received but tickets could not be confirmed. Keep this reference for support. Do not pay again." : order.status === "CONFIRMED" ? "Your verified booking is saved in My tickets." : expired || order.status === "EXPIRED" ? "This reservation has expired. Check payment status before starting another checkout." : order.status === "CREATE_UNKNOWN" ? "Payment setup is uncertain. Check this order before retrying. No ticket is confirmed yet." : `Reserved until ${esc(new Date(order.expiresAt).toLocaleTimeString())}. Closing the payment window does not confirm a booking.`}</p>${pending ? `<button class="primary-button" data-action="resume-payment" ${state.busy ? "disabled" : ""}>Resume payment</button>` : ""}${!["CONFIRMED", "REVIEW_REQUIRED"].includes(order.status) ? `<button class="secondary-button" data-action="check-payment" ${state.busy ? "disabled" : ""}>Check payment status</button><button class="quiet-button" data-action="cancel-payment" ${state.busy ? "disabled" : ""}>Release reservation</button>` : `<a class="hero-link" href="#tickets">View my tickets</a>${order.status === "CONFIRMED" ? '<button class="quiet-button" data-action="clear-checkout">Choose more tickets</button>' : ""}`}<p class="checkout-user">Test mode · no real money charged.</p>`;
+  box.innerHTML = `<h2>${order.refund ? refundLabel(order.refund) : order.status === "CONFIRMED" ? "Booking confirmed" : order.status === "REVIEW_REQUIRED" ? "Payment needs review" : "Your checkout"}</h2>${order.items.map((i) => `<div class="selected-summary"><strong>${esc(i.label)}${i.quantity > 1 ? ` × ${i.quantity}` : ""}</strong><span>${money((i.unitAmount * i.quantity) / 100, order.currency)}</span></div>`).join("")}<div class="checkout-line checkout-total"><span>Total</span><strong>${money(order.amount / 100, order.currency)}</strong></div><p class="checkout-user">Reference ${esc(order.id)}</p><p class="checkout-user">${order.refund ? refundMessage(order.refund) : order.status === "REVIEW_REQUIRED" ? "Payment was received but tickets could not be confirmed. Keep this reference for support. Do not pay again." : order.status === "CONFIRMED" ? "Your verified booking is saved in My tickets." : expired || order.status === "EXPIRED" ? "This reservation has expired. Check payment status before starting another checkout." : order.status === "CREATE_UNKNOWN" ? "Payment setup is uncertain. Check this order before retrying. No ticket is confirmed yet." : `Reserved until ${esc(new Date(order.expiresAt).toLocaleTimeString())}. Closing the payment window does not confirm a booking.`}</p>${pending ? `<button class="primary-button" data-action="resume-payment" ${state.busy ? "disabled" : ""}>Resume payment</button>` : ""}${!["CONFIRMED", "REVIEW_REQUIRED"].includes(order.status) ? `<button class="secondary-button" data-action="check-payment" ${state.busy ? "disabled" : ""}>Check payment status</button><button class="quiet-button" data-action="cancel-payment" ${state.busy ? "disabled" : ""}>Release reservation</button>` : `<a class="hero-link" href="#tickets">View my tickets</a>${order.status === "CONFIRMED" ? '<button class="quiet-button" data-action="clear-checkout">Choose more tickets</button>' : ""}`}<p class="checkout-user">Test mode · no real money charged.</p>`;
   return true;
 }
 function savePayment() {

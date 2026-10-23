@@ -50,9 +50,9 @@ Prefer running Java locally? See [local development and configuration](docs/DEVE
 
 ## Verification
 
-**132 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
+**147 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
 
-Thirty-eight Playwright checks cover desktop/mobile customer, organizer and developer behavior and run in CI. [Bug audit and coverage limits →](docs/BUG_AUDIT.md)
+Forty-six Playwright checks cover desktop/mobile customer, organizer and developer behavior and run in CI. [Bug audit and coverage limits →](docs/BUG_AUDIT.md)
 
 An additional opt-in live Neon test verifies database reads and private storage upload, listing, download integrity, anonymous denial and deletion. CI runs the local suite against PostgreSQL and Redis, validates Docker Compose, and builds the container. [Validation details →](docs/VALIDATION.md)
 
@@ -66,7 +66,7 @@ DB_USER="$(whoami)" mvn verify
 
 ## Payment checkout
 
-Razorpay **test-mode** orders, verified captured payments, signed webhooks and reconciliation are implemented for INR events. Assigned seats and standing admission confirm atomically. The hosted environment is connected to a test account; live keys are rejected. Local checkout stays disabled unless explicitly configured. Late payments enter a review queue rather than assigning unavailable tickets. Refund automation and QR ticket issuance are separate work. [Setup and verification →](docs/PAYMENTS.md)
+Razorpay **test-mode** orders, verified captured payments, signed webhooks and reconciliation are implemented for INR events. Assigned seats and standing admission confirm atomically. The hosted environment is connected to a test account; live keys are rejected. Local checkout stays disabled unless explicitly configured. Late payments enter a review queue rather than assigning unavailable tickets. Cancelled events and captured payments without tickets receive automatic full refunds with retry tracking. QR ticket issuance remains the next stage. [Refund behavior →](docs/REFUNDS.md) [Setup and verification →](docs/PAYMENTS.md)
 
 ## Accounts and deployment
 

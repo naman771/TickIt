@@ -818,3 +818,91 @@ test("cancelled paid event remains visible in My tickets after removal from publ
   await expect(page.locator(".ticket-card")).toContainText("Venue unavailable");
   expect(errors).toEqual([]);
 });
+
+for (const [refundStatus, label] of [
+  ["PROCESSED", "REFUND PROCESSED"],
+  ["FAILED", "REFUND NEEDS ATTENTION"],
+  ["RETRY", "REFUND QUEUED"],
+]) {
+  test(`cancelled ticket shows authoritative ${refundStatus} refund state`, async ({
+    page,
+  }) => {
+    const errors = await fixture(page);
+    await page.route("**/api/**", (r) => {
+      const path = new URL(r.request().url()).pathname;
+      if (path === "/api/events" || path === "/api/bookings/me")
+        return r.fulfill({ json: [] });
+      if (path === "/api/payments/orders/me")
+        return r.fulfill({
+          json: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              eventId: 901,
+              status: "CONFIRMED",
+              amount: 50000,
+              currency: "INR",
+              event: {
+                ...common,
+                id: 901,
+                status: "CANCELLED",
+                changeNote: "Venue unavailable",
+              },
+              refund: { status: refundStatus, amount: 50000, currency: "INR" },
+              items: [
+                {
+                  seatId: 8001,
+                  label: "Main · A1",
+                  quantity: 1,
+                  unitAmount: 50000,
+                },
+              ],
+            },
+          ],
+        });
+      return r.fulfill({
+        status: 404,
+        json: { error: "Unknown fixture route" },
+      });
+    });
+    await page.goto("/#tickets");
+    await expect(page.locator(".ticket-card .status-badge")).toHaveText(label);
+    expect(errors).toEqual([]);
+  });
+}
+
+test("developer payment operations display failed refunds for follow-up", async ({
+  page,
+}) => {
+  const errors = await fixture(page);
+  await page.route("**/api/developer/**", (r) => {
+    if (r.request().url().endsWith("/overview"))
+      return r.fulfill({
+        json: {
+          catalog: { events: 1, seats: 1, bookings: 1, accounts: 1 },
+          services: { postgresql: true, redis: true, objectStorage: true },
+          integrations: { authentication: true, payments: true, email: false },
+          checkedAt: "fixture",
+        },
+      });
+    return r.fulfill({
+      json: [
+        {
+          order_id: "11111111-1111-4111-8111-111111111111",
+          status: "FAILED",
+          reason: "EVENT_CANCELLED",
+          amount: 50000,
+          currency: "INR",
+          last_error: "Provider refund requires follow-up",
+        },
+      ],
+    });
+  });
+  await page.goto("/developer/");
+  await page.getByRole("heading", { name: "Workspace overview" }).waitFor();
+  await page.locator('[data-section="payments"]').click();
+  await expect(page.locator("#refundList")).toContainText("FAILED");
+  await expect(page.locator("#refundList")).toContainText(
+    "Provider refund requires follow-up",
+  );
+  expect(errors).toEqual([]);
+});

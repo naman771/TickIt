@@ -62,6 +62,7 @@ spring:
 app:
   payments:
     enabled: ${PAYMENTS_ENABLED:false}
+    refunds-enabled: ${PAYMENT_REFUNDS_ENABLED:true}
     key-id: ${RAZORPAY_KEY_ID:}
     key-secret: ${RAZORPAY_KEY_SECRET:}
     webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
