@@ -37,6 +37,15 @@ public class EventController {
     return ResponseEntity.ok(dtos);
   }
 
+  @GetMapping("/by-slug/{slug}")
+  public ResponseEntity<EventDto> bySlug(@PathVariable String slug) {
+    return eventRepository
+        .findBySlugAndPublicationStatus(slug, "PUBLISHED")
+        .map(this::toEventDto)
+        .map(ResponseEntity::ok)
+        .orElse(ResponseEntity.notFound().build());
+  }
+
   @GetMapping("/{id}")
   public ResponseEntity<EventDto> getEventById(@PathVariable Long id) {
     return eventRepository
@@ -154,6 +163,7 @@ public class EventController {
         .startInstant(
             event.getStartTime().atZone(java.time.ZoneId.of(event.getTimezone())).toInstant())
         .name(event.getName())
+        .slug(event.getSlug())
         .description(event.getDescription())
         .startTime(event.getStartTime())
         .endTime(event.getEndTime())

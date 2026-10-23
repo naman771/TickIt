@@ -14,6 +14,7 @@ public class EventSnapshots {
   public record Summary(
       long id,
       String name,
+      String slug,
       LocalDateTime startTime,
       Instant startInstant,
       String timezone,
@@ -35,6 +36,7 @@ public class EventSnapshots {
           return new Summary(
               id,
               r.getString("name"),
+              r.getString("slug"),
               start,
               start.atZone(ZoneId.of(zone)).toInstant(),
               zone,

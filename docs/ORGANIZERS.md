@@ -38,7 +38,7 @@ For local development, allow `http://localhost:8081,http://localhost:8083` in th
 
 ## Validation
 
-Twenty-three organizer integration tests cover ownership, role separation, draft privacy, custom layouts, stale revisions, publication, bulk edits, booked-seat protection, cancellation, deletion, date changes, invalid inputs, sales windows and concurrent reservations across shared-price tiers. The V3 migration and these flows also passed on a temporary Neon copy of production; that branch was removed afterward. Browser checks use explicit UI fixtures and cover CSV import/export, custom seating, mixed admission, preview, publishing, INR pricing, GA quantities and mobile layout. No sample organizer events were inserted into the public catalog.
+Twenty-six organizer integration tests cover ownership, role separation, draft privacy, custom layouts, stale revisions, publication, bulk edits, booked-seat protection, cancellation, deletion, date changes, invalid inputs, sales windows and concurrent reservations across shared-price tiers. The V3 migration and these flows also passed on a temporary Neon copy of production; that branch was removed afterward. Browser checks use explicit UI fixtures and cover CSV import/export, custom seating, mixed admission, preview, publishing, INR pricing, GA quantities and mobile layout. No sample organizer events were inserted into the public catalog.
 
 The live organizer origin was tested with real Clerk scripts and the production API: Google sign-in UI loaded, cross-origin requests reached protected routes, and no browser errors occurred. Completing OAuth and creating a real event uses the organizer's own session; automated flow data stayed in isolated tests.
 
@@ -59,3 +59,7 @@ Change the date/time and provide a reason to postpone or bring an event forward.
 Cancel event closes sales and removes the event from discovery. Delete event archives it and removes it from the organizer list as well. Both require a reason and the current revision. Neither destroys bookings, payment references or the event audit trail. Existing customers retain their ticket history, with a cancellation/refund-pending indicator. The developer payment review queue includes captured payments for cancelled/deleted events. Full refunds are queued automatically for captured payments after cancellation/deletion. Rescheduling keeps confirmed tickets valid. Refund status appears in customer history and the developer Payments panel; provider failures require follow-up. Direct rescheduling email notifications remain pending.
 
 See [organizer management verification](ORGANIZER_MANAGEMENT.md).
+
+## Public event links
+
+Publishing exposes a customer URL such as `/events/independent-sessions-mumbai`. Names and cities are normalized into a stable slug; a short suffix distinguishes duplicate names. Renaming or rescheduling preserves existing links. The View customer page action and customer event cards use this path. Old numbered hash links still open and the browser replaces them with the canonical readable path. Draft, cancelled and deleted slugs cannot expose public event details.

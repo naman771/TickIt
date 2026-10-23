@@ -11,6 +11,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface EventRepository extends JpaRepository<Event, Long> {
+  Optional<Event> findBySlugAndPublicationStatus(String slug, String status);
+
+  boolean existsBySlugAndPublicationStatus(String slug, String status);
+
   boolean existsByIdAndPublicationStatus(Long id, String status);
 
   List<Event> findByPublicationStatusOrderByStartTimeAsc(String status);

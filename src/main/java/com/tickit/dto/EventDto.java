@@ -30,6 +30,7 @@ public class EventDto {
   private int guestCapacity;
   private Long id;
   private String name;
+  private String slug;
   private String description;
   private LocalDateTime startTime;
   private LocalDateTime endTime;

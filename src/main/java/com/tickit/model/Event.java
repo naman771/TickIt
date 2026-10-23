@@ -22,6 +22,10 @@ public class Event {
   @Column(nullable = false, length = 512)
   private String name;
 
+  @org.hibernate.annotations.Generated(event = org.hibernate.generator.EventType.INSERT)
+  @Column(nullable = false, unique = true, length = 200, insertable = false, updatable = false)
+  private String slug;
+
   @Column(columnDefinition = "TEXT")
   private String description;
 

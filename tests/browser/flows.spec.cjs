@@ -4,6 +4,7 @@ const auth =
   'window.TickItAuth={user:{id:101,name:"Fixture account"},config:{checkoutEnabled:false},token:async()=>"fixture",onChange:()=>{},init:async()=>{},open:()=>{},signOut:async()=>{}};';
 const common = {
   name: "Independent Sessions",
+  slug: "independent-sessions-mumbai",
   description: "Community music and conversation.",
   venueName: "Community Hall",
   venueLocation: "Park Road",
@@ -904,5 +905,77 @@ test("developer payment operations display failed refunds for follow-up", async 
   await expect(page.locator("#refundList")).toContainText(
     "Provider refund requires follow-up",
   );
+  expect(errors).toEqual([]);
+});
+
+test("legacy event links become readable paths and survive reload and browser navigation", async ({
+  page,
+}) => {
+  const f = await customer(page);
+  await expect(page).toHaveURL(/\/events\/independent-sessions-mumbai$/);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: common.name, exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveTitle(`${common.name} | TickIt`);
+  await page.getByRole("link", { name: "Back to experiences" }).click();
+  await page.getByRole("link", { name: "Find tickets", exact: true }).click();
+  await expect(page).toHaveURL(/\/events\/independent-sessions-mumbai$/);
+  await page.goBack();
+  await expect(page.locator("#eventsGrid")).toBeVisible();
+  await page.goForward();
+  await expect(
+    page.getByRole("heading", { name: common.name, exact: true }),
+  ).toBeVisible();
+  expect(f.errors).toEqual([]);
+});
+test("unknown slug navigation shows an honest unavailable state", async ({
+  page,
+}) => {
+  const f = await customer(page);
+  await page.evaluate(() => {
+    history.pushState(null, "", "/events/unlisted-experience");
+    dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page.locator(".page-error")).toContainText("could not be found");
+  expect(f.errors).toEqual([]);
+});
+test("organizer customer link uses the published event slug", async ({
+  page,
+}) => {
+  const f = await publishedOrganizer(page);
+  await expect(
+    page.getByRole("link", { name: "View customer page" }),
+  ).toHaveAttribute("href", "/events/independent-sessions-mumbai");
+  expect(f.errors).toEqual([]);
+});
+test("removed event checkout history remains readable without a public event page", async ({
+  page,
+}) => {
+  const errors = await fixture(page);
+  const order = {
+    id: "11111111-1111-4111-8111-111111111111",
+    eventId: 901,
+    status: "REVIEW_REQUIRED",
+    amount: 50000,
+    currency: "INR",
+    event: { ...common, id: 901, status: "CANCELLED" },
+    refund: { status: "PROCESSED" },
+    items: [
+      { seatId: 8001, label: "Main · A1", quantity: 1, unitAmount: 50000 },
+    ],
+  };
+  await page.route("**/api/**", (r) => {
+    const path = new URL(r.request().url()).pathname;
+    if (path === "/api/events" || path === "/api/bookings/me")
+      return r.fulfill({ json: [] });
+    if (path === "/api/payments/orders/me") return r.fulfill({ json: [order] });
+    if (path === `/api/payments/orders/${order.id}`)
+      return r.fulfill({ json: order });
+    return r.fulfill({ status: 404, json: { error: "Unavailable" } });
+  });
+  await page.goto("/#tickets");
+  await page.getByRole("button", { name: "View checkout" }).click();
+  await expect(page.locator("#checkout")).toContainText("REFUND PROCESSED");
   expect(errors).toEqual([]);
 });

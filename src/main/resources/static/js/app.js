@@ -169,10 +169,17 @@ function clearHold() {
   state.hold = null;
   rememberHold();
 }
-function routeTo(hash) {
-  if (location.hash === hash) route();
-  else location.hash = hash;
+function eventUrl(event) {
+  return event.slug
+    ? `/events/${encodeURIComponent(event.slug)}`
+    : `/#event/${event.id}`;
 }
+function routeTo(path) {
+  if (path.startsWith("#")) path = "/" + path;
+  history.pushState(null, "", path);
+  route();
+}
+
 function setNav(view) {
   document
     .querySelectorAll("[data-nav]")
@@ -212,7 +219,7 @@ function renderEvents() {
     matches
       .map(
         (e) =>
-          `<article class="event-card"><a class="event-photo" href="#event/${e.id}" aria-label="Find tickets for ${esc(e.name)}" style="display:block"><img src="${esc(photo(e))}" alt="${isRace(e) ? "Formula racing cars on a circuit" : "The atmosphere of a live music performance"}" loading="lazy"><span class="event-type">${esc(categoryName(e))}</span><span class="event-date">${icon("calendar")}${esc(day(e.startInstant || e.startTime, e.timezone))}</span></a><div class="event-copy"><div class="event-location">${icon("pin")}${esc(city(e))}</div><h3><a href="#event/${e.id}">${esc(shortName(e))}</a></h3><p class="event-subtitle">${esc(tour(e))} <span aria-hidden="true">·</span> ${esc(e.venueName)}</p><div class="event-card-bottom"><span class="price"><small>From</small>${Number.isFinite(fromPrice(e)) ? money(fromPrice(e), e.currency || "USD") : "—"}</span><a class="text-action" href="#event/${e.id}">Find tickets ${icon("arrow")}</a></div></div></article>`,
+          `<article class="event-card"><a class="event-photo" href="${esc(eventUrl(e))}" aria-label="Find tickets for ${esc(e.name)}" style="display:block"><img src="${esc(photo(e))}" alt="${isRace(e) ? "Formula racing cars on a circuit" : "The atmosphere of a live music performance"}" loading="lazy"><span class="event-type">${esc(categoryName(e))}</span><span class="event-date">${icon("calendar")}${esc(day(e.startInstant || e.startTime, e.timezone))}</span></a><div class="event-copy"><div class="event-location">${icon("pin")}${esc(city(e))}</div><h3><a href="${esc(eventUrl(e))}">${esc(shortName(e))}</a></h3><p class="event-subtitle">${esc(tour(e))} <span aria-hidden="true">·</span> ${esc(e.venueName)}</p><div class="event-card-bottom"><span class="price"><small>From</small>${Number.isFinite(fromPrice(e)) ? money(fromPrice(e), e.currency || "USD") : "—"}</span><a class="text-action" href="${esc(eventUrl(e))}">Find tickets ${icon("arrow")}</a></div></div></article>`,
       )
       .join("") ||
     '<div class="empty-state"><h2>Nothing here, just yet.</h2><p>Try another artist, city, or category.</p></div>';
@@ -466,34 +473,70 @@ function renderError(err) {
   app.innerHTML = `<div class="wrap page-error"><h1>A brief intermission.</h1><p>${esc(err.message)}</p><button class="secondary-button" data-action="retry">Try again</button></div>`;
 }
 async function route() {
-  const sequence = ++routeSequence,
-    hash = location.hash || "#events";
+  const sequence = ++routeSequence;
+  let hash = location.hash || "#events";
+  if (
+    location.pathname.startsWith("/events/") &&
+    location.hash &&
+    !location.hash.startsWith("#event/")
+  ) {
+    history.replaceState(null, "", "/" + location.hash);
+  }
+  const slugMatch = location.pathname.match(/^\/events\/([a-z0-9-]+)\/?$/);
   if (hash === "#discover") {
     if (state.view !== "events") renderDiscovery();
     document.getElementById("discover")?.scrollIntoView({ behavior: "smooth" });
     return;
   }
-  const eventMatch = hash.match(/^#event\/(\d+)$/);
+  const legacyMatch = hash.match(/^#event\/(\d+)$/);
+  const eventMatch = slugMatch || legacyMatch;
+  let routeEvent = slugMatch
+    ? state.events.find((e) => e.slug === slugMatch[1])
+    : legacyMatch
+      ? state.events.find((e) => e.id === Number(legacyMatch[1]))
+      : null;
+  if (slugMatch && !routeEvent) {
+    try {
+      routeEvent = await api(
+        `/api/events/by-slug/${encodeURIComponent(slugMatch[1])}`,
+      );
+    } catch (error) {
+      if (sequence === routeSequence)
+        renderError(new Error("This experience could not be found."));
+      return;
+    }
+    if (sequence !== routeSequence) return;
+  }
   if (
     state.hold &&
     state.hold.deadline > Date.now() &&
-    (!eventMatch || Number(eventMatch[1]) !== state.hold.eventId)
+    (routeEvent?.id ?? (legacyMatch ? Number(legacyMatch[1]) : null)) !==
+      state.hold.eventId
   ) {
     notify(
       "Please confirm or release your reserved seat before leaving checkout.",
     );
-    location.hash = `#event/${state.hold.eventId}`;
+    const heldEvent = state.events.find((e) => e.id === state.hold.eventId);
+    history.replaceState(
+      null,
+      "",
+      heldEvent ? eventUrl(heldEvent) : `/#event/${state.hold.eventId}`,
+    );
+    route();
     return;
   }
   if (hash === "#tickets") {
     await renderTickets(sequence);
   } else if (eventMatch) {
-    const id = Number(eventMatch[1]),
-      e = state.events.find((e) => e.id === id);
+    const e = routeEvent,
+      id = e?.id;
     if (!e) {
       renderError(new Error("This experience could not be found."));
       return;
     }
+    if (e.slug && location.pathname !== eventUrl(e))
+      history.replaceState(null, "", eventUrl(e));
+    document.title = `${e.name} | TickIt`;
     state.event = e;
     state.selected = state.hold?.eventId === id ? state.hold.seatId : null;
     state.selectedSeats =
@@ -523,7 +566,10 @@ async function route() {
       if (sequence !== routeSequence) return;
       renderError(err);
     }
-  } else renderDiscovery();
+  } else {
+    document.title = "TickIt — Live experiences";
+    renderDiscovery();
+  }
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 function subscribe() {
@@ -653,6 +699,32 @@ TickItAuth.onChange((user) => {
   }
 });
 window.addEventListener("hashchange", route);
+window.addEventListener("popstate", route);
+document.addEventListener("click", (event) => {
+  const anchor = event.target.closest("a[href]");
+  if (
+    !anchor ||
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey ||
+    anchor.target ||
+    anchor.hasAttribute("download")
+  )
+    return;
+  const url = new URL(anchor.href, location.href);
+  if (
+    url.origin === location.origin &&
+    (url.pathname.startsWith("/events/") ||
+      (url.pathname === "/" &&
+        ["#events", "#tickets", "#discover", ""].includes(url.hash)))
+  ) {
+    event.preventDefault();
+    routeTo(url.pathname + url.hash);
+  }
+});
 async function start() {
   try {
     try {
@@ -1052,7 +1124,21 @@ async function viewCheckout(id) {
     state.checkout = order;
     state.paymentIntent = null;
     savePayment();
-    routeTo(`#event/${order.eventId}`);
+    if (order.event && order.event.status !== "PUBLISHED") {
+      state.view = "payment";
+      state.event = order.event;
+      app.innerHTML = `<div class="wrap"><a class="back-link" href="/#tickets">Back to My tickets</a><h1>${esc(order.event.name)}</h1><aside class="checkout" id="checkout"></aside></div>`;
+      renderPaymentSummary(document.getElementById("checkout"));
+      return;
+    }
+    routeTo(
+      eventUrl(
+        order.event ||
+          state.events.find((e) => e.id === order.eventId) || {
+            id: order.eventId,
+          },
+      ),
+    );
   } catch (err) {
     notify(err.message, true);
   }

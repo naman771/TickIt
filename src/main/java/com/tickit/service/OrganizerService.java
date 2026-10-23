@@ -461,6 +461,7 @@ public class OrganizerService {
     Map<String, Object> data = new LinkedHashMap<>();
     data.put("id", e.getId());
     data.put("name", e.getName());
+    data.put("slug", e.getSlug());
     data.put("description", e.getDescription());
     data.put("category", e.getCategory());
     data.put("admissionMode", e.getAdmissionMode());

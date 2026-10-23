@@ -139,3 +139,9 @@ Public event responses now include `version`, `status`, `changeNote` and `schedu
 Cancellation/deletion and verified captures without tickets queue durable refunds automatically. Payment order responses include `refund: {status, amount, currency, providerRefundId, reason}` when a job exists. Booking/payment history is retained; checkout `status` records the booking outcome while `refund.status` records returned funds. Refund states are `QUEUED`, `RETRY`, `PENDING`, `PROCESSED`, `FAILED`, `REVIEW`.
 
 `GET /api/developer/payments/refunds` is developer-only and lists up to 100 recent refund jobs and sanitized errors. Customer accounts cannot initiate arbitrary refunds or access this queue. Signed `refund.created`, `refund.processed` and `refund.failed` webhook events are supported on the existing payment webhook URL; the server re-fetches provider state. Periodic polling reconciles pending refunds without requiring those extra webhook subscriptions.
+
+## Readable public event URLs
+
+`GET /events/{slug}` serves the customer website for a published event and supports direct links/reloads. `GET /api/events/by-slug/{slug}` resolves the same published event metadata. All event responses now include `slug`; existing numeric API IDs remain internal references for inventory and checkout. Customer links use `/events/{slug}`. Legacy `/#event/{id}` links are canonicalized by the browser, preserving old bookmarks.
+
+V8 backfills existing events and allocates unique slugs in PostgreSQL when events are created. Names and cities supply the readable base, with a short suffix only for duplicates. Slugs remain stable when names/dates change and are not reused by archived events. Unpublished/cancelled/deleted slugs return 404 on public routes.

@@ -742,4 +742,64 @@ class OrganizerFlowTest {
                 "SELECT count(*) FROM event_change WHERE event_id=?", Integer.class, event))
         .isEqualTo(2);
   }
+
+  @Test
+  void readableSlugsAreUniqueAndRemainStableAfterRenaming() {
+    var input = payload("SEATED");
+    String unique = UUID.randomUUID().toString().substring(0, 8);
+    input.put("name", "Jazz & Coffee " + unique);
+    var first = save(input);
+    var second = save(input);
+    String slug = "jazz-coffee-" + unique + "-mumbai";
+    assertThat(first.get("slug")).isEqualTo(slug);
+    assertThat(second.get("slug").toString()).startsWith(slug + "-").isNotEqualTo(slug);
+    input.put("version", first.get("version"));
+    input.put("name", "Renamed concert");
+    var renamed = organizer.save(id(first), request(input));
+    assertThat(renamed.get("slug")).isEqualTo(slug);
+  }
+
+  @Test
+  void slugApiAndDeepLinkExposeOnlyPublishedEvents() throws Exception {
+    var draft = save(payload("SEATED"));
+    String slug = draft.get("slug").toString();
+    mvc.perform(get("/api/events/by-slug/" + slug)).andExpect(status().isNotFound());
+    mvc.perform(get("/events/" + slug)).andExpect(status().isNotFound());
+    var published = organizer.publish(id(draft), ((Number) draft.get("version")).longValue());
+    mvc.perform(get("/api/events/by-slug/" + slug))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value(id(draft)))
+        .andExpect(jsonPath("$.slug").value(slug));
+    mvc.perform(get("/events/" + slug))
+        .andExpect(status().isOk())
+        .andExpect(forwardedUrl("/index.html"));
+    organizer.remove(
+        id(draft), ((Number) published.get("version")).longValue(), "Venue cancellation", false);
+    mvc.perform(get("/api/events/by-slug/" + slug)).andExpect(status().isNotFound());
+    mvc.perform(get("/events/" + slug)).andExpect(status().isNotFound());
+    mvc.perform(get("/events/unknown-" + UUID.randomUUID())).andExpect(status().isNotFound());
+  }
+
+  @Test
+  void concurrentSameNameEventsGetDifferentSlugs() throws Exception {
+    var input = payload("SEATED");
+    input.put("name", "Shared name " + UUID.randomUUID());
+    try (var executor = Executors.newFixedThreadPool(2)) {
+      var gun = new CountDownLatch(1);
+      var a =
+          executor.submit(
+              () -> {
+                gun.await();
+                return save(input).get("slug");
+              });
+      var b =
+          executor.submit(
+              () -> {
+                gun.await();
+                return save(input).get("slug");
+              });
+      gun.countDown();
+      assertThat(a.get(10, TimeUnit.SECONDS)).isNotEqualTo(b.get(10, TimeUnit.SECONDS));
+    }
+  }
 }

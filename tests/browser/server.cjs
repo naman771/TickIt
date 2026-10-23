@@ -17,7 +17,9 @@ const server = http.createServer(async (req, res) => {
     );
     const file = path.resolve(
       root,
-      "." + pathname + (pathname.endsWith("/") ? "index.html" : ""),
+      pathname.startsWith("/events/")
+        ? "index.html"
+        : "." + pathname + (pathname.endsWith("/") ? "index.html" : ""),
     );
     if (!file.startsWith(root + path.sep)) {
       res.writeHead(403).end();

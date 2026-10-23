@@ -37,6 +37,6 @@ Backend tests cover cancellation/deletion, unissued tickets, preserved receipts,
 
 Verification passed: 149 backend tests (147 passing, 2 optional provider tests skipped), 46 desktop/mobile browser checks, and six critical refund cases on a disposable Neon branch after applying V7. The branch was deleted and production CLI context restored.
 
-These tests use a simulated gateway. A user-completed test payment followed by cancellation is still needed to observe one full provider refund end to end; no real refund request was issued during automated testing. The disposable Neon check validates the migration and queue against managed PostgreSQL without touching the production catalog.
+These tests use a simulated gateway. After deployment, two automatically issued Razorpay Test Mode refunds were independently verified with read-only provider GET requests: both reported processed, and their payment IDs, full amounts, currencies and checkout receipts matched the stored jobs. These arose from cancelled/deleted events; no valid customer booking was cancelled by automated testing. Remaining retry/failure states are visible in the developer workspace. The disposable Neon check validates the migration and queue against managed PostgreSQL without touching the production catalog.
 
 Sources: [Razorpay idempotent refund API](https://razorpay.com/docs/api/refunds/normal-refunds-idempotent/), [fetch refund](https://razorpay.com/docs/api/refunds/fetch-with-id/), [refund webhooks](https://razorpay.com/docs/webhooks/refunds/).
