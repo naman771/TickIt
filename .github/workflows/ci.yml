@@ -39,6 +39,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
       - run: node --check src/main/resources/static/js/app.js
       - run: node --check src/main/resources/static/js/auth.js
       - run: node --check src/main/resources/static/developer/portal.js
@@ -52,3 +55,11 @@ jobs:
         with:
           name: test-results
           path: target/surefire-reports/
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-results
+          path: |
+            playwright-report/
+            test-results/

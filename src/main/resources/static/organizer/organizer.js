@@ -13,6 +13,7 @@ const state = {
   busy: false,
   sessionUser: null,
   loadGeneration: 0,
+  routeGeneration: 0,
 };
 const esc = (v) =>
   String(v ?? "").replace(
@@ -46,7 +47,18 @@ async function api(path, options = {}) {
       ...(options.headers || {}),
     },
   });
-  const data = await response.json();
+  let data;
+  try {
+    data = (await response.json()) ?? {};
+  } catch {
+    if (response.ok)
+      throw new Error(
+        "The server returned an incomplete response. Please try again.",
+      );
+    data = {
+      error: "The service is temporarily unavailable. Please try again.",
+    };
+  }
   if (!response.ok) {
     const error = new Error(
       data.error || "The request could not be completed.",
@@ -67,6 +79,7 @@ function onboard() {
 }
 async function loadWorkspace() {
   const generation = ++state.loadGeneration;
+  ++state.routeGeneration;
   if (!TickItAuth.user) {
     state.profile = null;
     landing();
@@ -189,6 +202,14 @@ function formatSections() {
   document
     .getElementById("admissionSection")
     ?.classList.toggle("hidden", mode === "SEATED");
+  for (const id of ["seatingSection", "admissionSection"]) {
+    const section = document.getElementById(id);
+    section
+      ?.querySelectorAll("input,select,textarea,button")
+      .forEach(
+        (input) => (input.disabled = section.classList.contains("hidden")),
+      );
+  }
   updateInventory();
 }
 function readPayload() {
@@ -292,7 +313,11 @@ function addSection() {
     cols < 1 ||
     cols > 28 ||
     !Number.isFinite(price) ||
-    price < 0
+    price < 0 ||
+    price > 999999.99 ||
+    Math.abs(price * 100 - Math.round(price * 100)) > 0.00001 ||
+    !Number.isInteger(x) ||
+    !Number.isInteger(y)
   ) {
     notice("Choose a section name, valid row/seat counts and price.");
     return;
@@ -334,8 +359,13 @@ function addSection() {
     notice("The assigned-seat limit is 1,500 per event.");
     return;
   }
-  const existing = new Set(state.seats.map((s) => s.x + ":" + s.y));
-  if (generated.some((s) => existing.has(s.x + ":" + s.y))) {
+  if (
+    generated.some((s) =>
+      state.seats.some(
+        (other) => Math.abs(other.x - s.x) < 22 && Math.abs(other.y - s.y) < 22,
+      ),
+    )
+  ) {
     notice(
       "This section overlaps existing seat positions. Change its offsets.",
     );
@@ -366,18 +396,23 @@ async function saveDraft(render = true) {
   const form = document.getElementById("eventForm");
   if (!form.reportValidity()) return null;
   const payload = readPayload();
+  const generation = state.routeGeneration;
+  const draftId = state.draft.id;
   const d = await api(
     "/api/organizer/events" + (state.draft.id ? "/" + state.draft.id : ""),
     { method: state.draft.id ? "PUT" : "POST", body: JSON.stringify(payload) },
   );
-  state.draft = d;
   state.events = state.events.filter((e) => e.id !== d.id);
   state.events.unshift(d);
+  if (generation !== state.routeGeneration || state.draft?.id !== draftId)
+    return null;
+  state.draft = d;
   history.replaceState(null, "", "#event/" + d.id);
   if (render) editor(d);
   return d;
 }
 async function route() {
+  const generation = ++state.routeGeneration;
   if (!state.profile) return;
   if (location.hash === "#new") {
     editor(initialDraft());
@@ -386,8 +421,11 @@ async function route() {
   const match = location.hash.match(/^#event\/(\d+)$/);
   if (match) {
     try {
-      editor(await api("/api/organizer/events/" + match[1]));
+      const draft = await api("/api/organizer/events/" + match[1]);
+      if (generation !== state.routeGeneration) return;
+      editor(draft);
     } catch (error) {
+      if (generation !== state.routeGeneration) return;
       notice(error.message);
       dashboard();
     }
@@ -428,7 +466,7 @@ function parseCsv(text) {
     throw new Error("CSV header must be section,row,number,x,y,price.");
   const seen = new Set(),
     positions = new Set();
-  return rows.slice(1).map((v, i) => {
+  const parsed = rows.slice(1).map((v, i) => {
     if (v.length !== 6) throw new Error(`CSV row ${i + 2} needs 6 columns.`);
     const [section, row, number, x, y, price] = [
       v[0].trim(),
@@ -464,6 +502,16 @@ function parseCsv(text) {
     positions.add(pos);
     return { section, row, number, x, y, price };
   });
+  for (let i = 0; i < parsed.length; i++)
+    for (let j = 0; j < i; j++)
+      if (
+        Math.abs(parsed[i].x - parsed[j].x) < 22 &&
+        Math.abs(parsed[i].y - parsed[j].y) < 22
+      )
+        throw new Error(
+          "Imported seats overlap. Leave room for each 22 × 22 seat.",
+        );
+  return parsed;
 }
 function toggleEditorSeat(index) {
   const at = state.editorSelection.indexOf(index);
@@ -479,13 +527,23 @@ function toggleEditorSeat(index) {
 }
 document.addEventListener("keydown", (event) => {
   const seat = event.target.closest("[data-map-index]");
+  if (event.target.closest("#preview")) return;
   if (seat && (event.key === "Enter" || event.key === " ")) {
     event.preventDefault();
     toggleEditorSeat(Number(seat.dataset.mapIndex));
   }
 });
 let drag = null;
+document.addEventListener("pointercancel", () => {
+  if (!drag) return;
+  drag.originals.forEach((original) =>
+    Object.assign(state.seats[original.i], { x: original.x, y: original.y }),
+  );
+  drag = null;
+  renderMap();
+});
 document.addEventListener("pointerdown", (event) => {
+  if (event.target.closest("#preview")) return;
   if (state.busy) return;
   const seat = event.target.closest("[data-map-index]"),
     stage = event.target.closest("[data-stage]");
@@ -646,6 +704,7 @@ document.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (state.busy) return;
   state.busy = true;
+  event.target.inert = true;
   try {
     if (event.target.id === "profileForm") {
       await api("/api/organizer/profile", {
@@ -660,6 +719,7 @@ document.addEventListener("submit", async (event) => {
     notice(error.message);
   } finally {
     state.busy = false;
+    event.target.inert = false;
   }
 });
 document.addEventListener("click", async (event) => {
@@ -804,6 +864,9 @@ document.addEventListener("click", async (event) => {
     )
       return;
     state.busy = true;
+    const generation = state.routeGeneration;
+    const form = document.getElementById("eventForm");
+    form.inert = true;
     target.disabled = true;
     try {
       const saved = await saveDraft(false);
@@ -814,6 +877,7 @@ document.addEventListener("click", async (event) => {
         );
         state.events = state.events.filter((e) => e.id !== published.id);
         state.events.unshift(published);
+        if (generation !== state.routeGeneration) return;
         editor(published);
         notice("Event published. Guests can now discover it.");
       }
@@ -821,11 +885,13 @@ document.addEventListener("click", async (event) => {
       notice(error.message);
     } finally {
       state.busy = false;
+      form.inert = false;
       target.disabled = false;
     }
   }
   if (target.hasAttribute("data-duplicate")) {
     state.busy = true;
+    const generation = state.routeGeneration;
     try {
       const copy = structuredClone(state.draft);
       delete copy.id;
@@ -838,6 +904,7 @@ document.addEventListener("click", async (event) => {
         body: JSON.stringify(copy),
       });
       state.events.unshift(d);
+      if (generation !== state.routeGeneration) return;
       history.replaceState(null, "", "#event/" + d.id);
       editor(d);
       notice("A separate private draft was created.");

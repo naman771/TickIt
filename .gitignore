@@ -44,3 +44,7 @@ skills-lock.json
 
 # Static organizer deployment output
 dist/
+
+# Browser regression output
+playwright-report/
+test-results/

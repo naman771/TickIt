@@ -13,12 +13,12 @@ The original delivery phases remain the structure for further work. The current 
 | 7. Email | Optional | Async SMTP implementation. Durable outbox and retries pending. |
 | 8. Expired holds | Complete | Bounded Redis expiry-index worker and live status notifications. |
 | 9. API and website | MVP complete | Discovery, search/filter, seat selection, confirmation, ticket history. |
-| 10. Authentication | Integration implemented; provider setup pending | Clerk signup/Google sign-in integration, signed-session verification, account isolation, separate developer authorization. |
-| 11. Testing | Partial | Integration/concurrency regression suite. Testcontainers and k6 remain. |
-| 12. CI/CD | Partial | GitHub Actions tests and container build. Registry publication/deployment pending. |
-| 13. Deployment | Local ready | Docker Compose. Hosted staging and Kubernetes remain. |
+| 10. Authentication | Connected; production instance pending | Clerk signup/Google sign-in integration, signed-session verification, account isolation, separate developer authorization. |
+| 11. Testing | Partial | 84 local regression tests, real WebSocket transport, a separately passing Neon storage test, and 22 CI browser checks. Testcontainers and broad k6 capacity testing remain. |
+| 12. CI/CD | Partial | GitHub Actions backend/browser tests and container build; connected free Render deployments. Optional registry publication remains. |
+| 13. Deployment | Hosted interim environment | Separate Render customer/organizer sites, private Redis and Neon. Free-host limits and production identity/operations work remain; Kubernetes is optional. |
 
-Before a public launch: authentication, payment integration and reconciliation, request idempotency, durable notification delivery, deployment observability, dependency upgrades, and a broader failure/load-testing programme.
+Before paid public launch: production identity configuration, payment integration and reconciliation, request idempotency, durable notification delivery, deployment observability, the remaining Framework 7 dependency migration, and a broader failure/load-testing programme.
 
 ## Organizer catalog update
 

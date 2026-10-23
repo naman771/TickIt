@@ -50,3 +50,7 @@ The regression suite now has 66 passing tests and one optional cloud-storage tes
 Chrome fixture checks cover organizer three-seat selection and bulk pricing, customer three-seat selection/totals/deselection, minimum-age controls and declarations, standing quantities capped at three, and developer test controls/results. All three pages were checked for mobile overflow and JavaScript errors.
 
 The V4 migration plus all 17 organizer/diagnostic integration tests also passed on a disposable Neon branch of production. Production context was restored and the branch deleted after verification.
+
+## Bug-audit regression expansion
+
+84 local backend tests now pass, with the optional real-Neon storage test passing separately. Twenty-two committed desktop/mobile Playwright checks run in CI. Added coverage includes real socket delivery and forged-message denial, identity provisioning races, mixed-mode concurrent limits, natural expiry, database version conflicts, broker outages, malformed requests, layout validation, availability/pricing, stale routes/saves and sign-out responses. The runtime is upgraded to Spring Boot 3.5.16 with compatible library patches. Two advisories for unused MVC features remain explicitly tracked in [the audit report](BUG_AUDIT.md).

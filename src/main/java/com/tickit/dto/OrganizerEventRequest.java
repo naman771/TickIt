@@ -24,8 +24,8 @@ public record OrganizerEventRequest(
     @Min(0) @Max(800) int stageX,
     @Min(0) @Max(650) int stageY,
     Long version,
-    @NotNull @Size(max = 1500) List<@Valid SeatInput> seats,
-    @NotNull @Size(max = 12) List<@Valid PoolInput> pools,
+    @NotNull @Size(max = 1500) List<@NotNull @Valid SeatInput> seats,
+    @NotNull @Size(max = 12) List<@NotNull @Valid PoolInput> pools,
     LocalDateTime salesStart,
     LocalDateTime salesEnd,
     @Min(1) @Max(3) int perOrderLimit,
@@ -42,7 +42,7 @@ public record OrganizerEventRequest(
   public record PoolInput(
       @NotBlank @Size(max = 80) String name,
       @Min(1) @Max(100000) int capacity,
-      @NotNull @Size(min = 1, max = 8) List<@Valid TicketInput> tickets) {}
+      @NotNull @Size(min = 1, max = 8) List<@NotNull @Valid TicketInput> tickets) {}
 
   public record TicketInput(
       @NotBlank @Size(max = 80) String name,

@@ -176,11 +176,18 @@ public class OrganizerService {
         throw bad("Cover image must be an HTTPS URL");
       }
     }
-    Set<String> seatLabels = new HashSet<>(), positions = new HashSet<>();
+    Set<String> seatLabels = new HashSet<>();
+    Map<String, List<OrganizerEventRequest.SeatInput>> cells = new HashMap<>();
     for (var s : i.seats()) {
       if (!seatLabels.add(s.section().trim() + "/" + s.row().trim() + "/" + s.number()))
         throw bad("Duplicate seat label within a section");
-      if (!positions.add(s.x() + ":" + s.y())) throw bad("Two seats occupy the same position");
+      int cx = s.x() / 22, cy = s.y() / 22;
+      for (int x = cx - 1; x <= cx + 1; x++)
+        for (int y = cy - 1; y <= cy + 1; y++)
+          for (var other : cells.getOrDefault(x + ":" + y, List.of()))
+            if (Math.abs(other.x() - s.x()) < 22 && Math.abs(other.y() - s.y()) < 22)
+              throw bad("Seat positions overlap; leave room for each 22 × 22 seat");
+      cells.computeIfAbsent(cx + ":" + cy, key -> new ArrayList<>()).add(s);
     }
     Set<String> poolNames = new HashSet<>();
     for (var p : i.pools()) {

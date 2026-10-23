@@ -99,26 +99,35 @@ public class EventController {
     var admissionPools = pools.findByEventIdOrderById(event.getId());
     int standing =
         admissionPools.stream().mapToInt(com.tickit.model.AdmissionPool::getCapacity).sum();
-    int standingAvailable =
-        admissionPools.stream()
-            .mapToInt(
-                p ->
-                    (int)
-                        Math.max(
-                            0,
-                            p.getCapacity() - p.getSold() - admissionHolds.activeInPool(p.getId())))
-            .sum();
+    Set<Long> bookedIds =
+        bookings.stream().map(b -> b.getSeat().getId()).collect(Collectors.toSet());
+    Set<Long> heldIds =
+        seatHoldService.heldSeatIds(event.getId(), seats.stream().map(Seat::getId).toList());
+    var freeSeats =
+        seats.stream()
+            .filter(s -> !bookedIds.contains(s.getId()) && !heldIds.contains(s.getId()))
+            .toList();
+    List<java.math.BigDecimal> prices =
+        new ArrayList<>(freeSeats.stream().map(Seat::getPrice).toList());
+    int standingAvailable = 0;
+    for (var pool : admissionPools) {
+      long poolRemaining =
+          Math.max(
+              0, pool.getCapacity() - pool.getSold() - admissionHolds.activeInPool(pool.getId()));
+      long tierRemaining = 0;
+      for (var type : ticketTypes.findByPoolIdOrderById(pool.getId())) {
+        long remaining =
+            Math.max(
+                0, type.getQuota() - type.getSold() - admissionHolds.activeForTicket(type.getId()));
+        tierRemaining += remaining;
+        if (poolRemaining > 0 && remaining > 0) prices.add(type.getPrice());
+      }
+      standingAvailable += (int) Math.min(poolRemaining, tierRemaining);
+    }
     java.math.BigDecimal fromPrice =
-        java.util.stream.Stream.concat(
-                seats.stream().map(Seat::getPrice),
-                admissionPools.stream()
-                    .flatMap(p -> ticketTypes.findByPoolIdOrderById(p.getId()).stream())
-                    .map(com.tickit.model.AdmissionTicketType::getPrice))
-            .min(java.math.BigDecimal::compareTo)
-            .orElse(java.math.BigDecimal.ZERO);
+        prices.stream().min(java.math.BigDecimal::compareTo).orElse(null);
     int total = seats.size();
-    int booked = bookings.size();
-    int available = Math.max(0, total - booked);
+    int available = freeSeats.size();
 
     List<Venue> venues = venueRepository.findByEventId(event.getId());
     String venueName = venues.isEmpty() ? "Main Arena" : venues.get(0).getName();

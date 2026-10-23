@@ -99,9 +99,12 @@ public class BookingController {
             .seatId(seatId)
             .seatLabel(label)
             .status("HELD")
-            .heldByUserId(userId)
             .build();
-    messagingTemplate.convertAndSend("/topic/seats/" + eventId, update);
+    try {
+      messagingTemplate.convertAndSend("/topic/seats/" + eventId, update);
+    } catch (Exception ex) {
+      log.warn("Seat notification unavailable; clients reconcile through the seat API", ex);
+    }
 
     return ResponseEntity.ok(
         Map.of(
@@ -141,7 +144,11 @@ public class BookingController {
             .seatLabel(label)
             .status(bookingRepository.existsBySeatIdAndEventId(seatId, eventId) ? "BOOKED" : "FREE")
             .build();
-    messagingTemplate.convertAndSend("/topic/seats/" + eventId, update);
+    try {
+      messagingTemplate.convertAndSend("/topic/seats/" + eventId, update);
+    } catch (Exception ex) {
+      log.warn("Seat notification unavailable; clients reconcile through the seat API", ex);
+    }
 
     return ResponseEntity.ok(Map.of("message", "Hold released successfully"));
   }

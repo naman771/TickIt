@@ -69,7 +69,7 @@ The existing sample catalog is denominated in USD. Prices must not be relabelled
 
 ## Developer workspace
 
-The portal contains authenticated infrastructure checks, real database counts, and integration status. API authorization is enforced server-side, not by hiding a URL. No credentials or customer lists are returned. The portal has no production traffic generator or simulated metrics.
+The portal contains authenticated infrastructure checks, real database counts, and integration status. API authorization is enforced server-side, not by hiding a URL. No credentials or customer lists are returned. The portal offers bounded component diagnostics using isolated records and Redis keys; it does not generate unrestricted production traffic or fabricate metrics.
 
 Public frontend shell: `/developer/`. Protected endpoint: `GET /api/developer/overview`.
 

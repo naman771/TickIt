@@ -430,4 +430,146 @@ class OrganizerFlowTest {
                 .content(json.writeValueAsString(p)))
         .andExpect(status().isBadRequest());
   }
+
+  @Autowired SeatHoldService seatHolds;
+
+  @Test
+  void eventCountsAndStartingPriceExcludeHeldSeatsAndExhaustedTicketTiers() throws Exception {
+    var p = payload("MIXED");
+    p.put(
+        "seats",
+        List.of(
+            Map.of(
+                "section", "Main", "row", "A", "number", 1, "x", 80, "y", 130, "price", "100.00"),
+            seat("Main", 2, 108, 130)));
+    p.put(
+        "pools",
+        List.of(
+            Map.of(
+                "name",
+                "Floor",
+                "capacity",
+                3,
+                "tickets",
+                List.of(
+                    Map.of("name", "Early", "price", "300.00", "quota", 1),
+                    Map.of("name", "Regular", "price", "500.00", "quota", 1)))));
+    Long event = id(publish(p));
+    mvc.perform(get("/api/events/" + event)).andExpect(jsonPath("$.availableTickets").value(4));
+    var rows = seats.findByVenueEventId(event);
+    Long cheap =
+        rows.stream().filter(s -> s.getSeatNumber() == 1).findFirst().orElseThrow().getId();
+    Long regular =
+        rows.stream().filter(s -> s.getSeatNumber() == 2).findFirst().orElseThrow().getId();
+    try {
+      org.junit.jupiter.api.Assertions.assertTrue(
+          seatHolds.acquireHold(event, cheap, owner.getId()));
+      Long tier =
+          types
+              .findByPoolIdOrderById(pools.findByEventIdOrderById(event).get(0).getId())
+              .get(0)
+              .getId();
+      var ga = admission.hold(event, tier, 1, null);
+      mvc.perform(get("/api/events/" + event))
+          .andExpect(jsonPath("$.availableSeats").value(1))
+          .andExpect(jsonPath("$.availableTickets").value(2))
+          .andExpect(jsonPath("$.fromPrice").value(500));
+      org.junit.jupiter.api.Assertions.assertTrue(
+          seatHolds.acquireHold(event, regular, owner.getId()));
+      admission.release((UUID) ga.get("id"));
+    } finally {
+      for (var row : rows) seatHolds.releaseHold(event, row.getId());
+    }
+  }
+
+  @Test
+  void nullInventoryElementsAndOverlappingSeatRectanglesAreRejected() throws Exception {
+    for (String field : List.of("seats", "pools")) {
+      var p = payload("MIXED");
+      p.put(field, java.util.Arrays.asList((Object) null));
+      mvc.perform(
+              post("/api/organizer/events")
+                  .with(jwt())
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(json.writeValueAsString(p)))
+          .andExpect(status().isBadRequest());
+    }
+    var p = payload("SEATED");
+    p.put("seats", List.of(seat("Main", 1, 80, 130), seat("Main", 2, 90, 140)));
+    mvc.perform(
+            post("/api/organizer/events")
+                .with(jwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(p)))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void concurrentMixedAdmissionCannotBypassAccountLimit() throws Exception {
+    var p = payload("MIXED");
+    p.put(
+        "seats",
+        List.of(
+            seat("Main", 1, 80, 130),
+            seat("Main", 2, 108, 130),
+            seat("Main", 3, 136, 130),
+            seat("Main", 4, 164, 130)));
+    p.put("pools", List.of(pool(10)));
+    Long event = id(publish(p));
+    var rows = seats.findByVenueEventId(event);
+    Long tier =
+        types
+            .findByPoolIdOrderById(pools.findByEventIdOrderById(event).get(0).getId())
+            .get(0)
+            .getId();
+    var executor = Executors.newFixedThreadPool(6);
+    var start = new CountDownLatch(1);
+    List<Future<?>> attempts = new ArrayList<>();
+    try {
+      for (var row : rows)
+        attempts.add(
+            executor.submit(
+                () -> {
+                  start.await();
+                  int status =
+                      mvc.perform(
+                              post("/api/holds")
+                                  .with(jwt())
+                                  .contentType(MediaType.APPLICATION_JSON)
+                                  .content(
+                                      json.writeValueAsString(
+                                          Map.of("eventId", event, "seatId", row.getId()))))
+                          .andReturn()
+                          .getResponse()
+                          .getStatus();
+                  assertThat(status).isIn(200, 409);
+                  return null;
+                }));
+      for (int i = 0; i < 8; i++)
+        attempts.add(
+            executor.submit(
+                () -> {
+                  start.await();
+                  try {
+                    admission.hold(event, tier, 1, null);
+                  } catch (ResponseStatusException conflict) {
+                    assertThat(conflict.getStatusCode().value()).isEqualTo(409);
+                  }
+                  return null;
+                }));
+      start.countDown();
+      for (var attempt : attempts) attempt.get(30, TimeUnit.SECONDS);
+      long ga =
+          jdbc.queryForObject(
+              "SELECT COALESCE(sum(quantity),0) FROM admission_hold WHERE event_id=? AND NOT"
+                  + " released AND expires_at>clock_timestamp()",
+              Long.class,
+              event);
+      assertThat(ga + seatHolds.activeForUser(event, owner.getId())).isEqualTo(3);
+    } finally {
+      executor.shutdownNow();
+      for (var row : rows) seatHolds.releaseHold(event, row.getId());
+      jdbc.update("UPDATE admission_hold SET released=true WHERE event_id=?", event);
+    }
+  }
 }

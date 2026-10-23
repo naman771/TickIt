@@ -96,4 +96,23 @@ class SeatHoldServiceTest {
       for (long seat = 1; seat <= 14; seat++) seatHoldService.releaseHold(event, seat);
     }
   }
+
+  @Autowired org.springframework.data.redis.core.StringRedisTemplate redis;
+
+  @Test
+  void naturalExpiryRestoresTheAccountAllowance() {
+    var shortHolds = new SeatHoldService(redis);
+    org.springframework.test.util.ReflectionTestUtils.setField(shortHolds, "holdTtlSeconds", 1);
+    long event = 900000L + java.util.concurrent.ThreadLocalRandom.current().nextInt(100000);
+    try {
+      for (long id = 1; id <= 3; id++) assertTrue(shortHolds.acquireHold(event, id, user1));
+      assertFalse(shortHolds.acquireHold(event, 4L, user1));
+      org.awaitility.Awaitility.await()
+          .atMost(java.time.Duration.ofSeconds(5))
+          .until(() -> shortHolds.activeForUser(event, user1) == 0);
+      assertTrue(shortHolds.acquireHold(event, 4L, user1));
+    } finally {
+      for (long id = 1; id <= 4; id++) shortHolds.releaseHold(event, id);
+    }
+  }
 }

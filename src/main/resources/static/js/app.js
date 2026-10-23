@@ -87,7 +87,12 @@ const tour = (event) =>
   event.name.split(":").slice(1).join(":").trim() || event.venueName;
 const city = (e) => e.city || (e.venueLocation || "").split(",")[0];
 const fromPrice = (e) =>
-  e.fromPrice ?? Math.min(...(state.seatCache[e.id] || []).map((s) => s.price));
+  e.fromPrice ??
+  Math.min(
+    ...(state.seatCache[e.id] || [])
+      .filter((s) => s.status === "FREE")
+      .map((s) => s.price),
+  );
 const categoryName = (e) =>
   ({
     MUSIC: "Live music",
@@ -118,7 +123,18 @@ async function api(url, options = {}) {
       ...(options.headers || {}),
     },
   });
-  const data = await response.json();
+  let data;
+  try {
+    data = (await response.json()) ?? {};
+  } catch {
+    if (response.ok)
+      throw new Error(
+        "The server returned an incomplete response. Please try again.",
+      );
+    data = {
+      error: "The service is temporarily unavailable. Please try again.",
+    };
+  }
   if (!response.ok) {
     const err = new Error(
       response.status === 429
@@ -159,7 +175,15 @@ function setNav(view) {
 function renderDiscovery() {
   state.view = "events";
   setNav("events");
-  app.innerHTML = `<div class="wrap"><section class="hero"><div class="hero-copy"><div class="eyebrow">For the moments that matter</div><h1>Some nights<br><em>stay with you.</em></h1><p>The artists you love. The places you want to be.<br>Find your next live experience, and make it yours.</p><a class="hero-link" href="#discover">Explore what’s on ${icon("arrow")}</a></div><div class="hero-picture"><img src="/images/concert.jpg" alt="A crowd gathered under the lights at a live concert" fetchpriority="high"><span class="photo-credit">LIVE, IN THE MOMENT</span><div class="hero-photo-caption"><span>MORE THAN A TICKET</span><strong>A story you’ll tell for years.</strong></div></div></section><section class="discovery" id="discover"><div class="section-heading"><h2>Worth being there for.</h2><p>${state.events.length} upcoming experiences</p></div><div class="discovery-toolbar"><div class="filters" role="group" aria-label="Event category"><button class="filter ${state.category === "all" ? "active" : ""}" data-category="all">All experiences</button><button class="filter ${state.category === "music" ? "active" : ""}" data-category="music">${icon("music")} Music</button><button class="filter ${state.category === "sports" ? "active" : ""}" data-category="sports">Sport</button><button class="filter" data-category="comedy">Comedy</button><button class="filter" data-category="theatre">Theatre</button><button class="filter" data-category="conference">Conferences</button><button class="filter" data-category="community">Community</button><button class="filter" data-category="other">Other</button></div><label class="search-box">${icon("search")}<input id="eventSearch" type="search" placeholder="Artist, event or city" aria-label="Search events" value="${esc(state.search)}"></label></div><div class="events-grid" id="eventsGrid"></div></section><section class="editorial-note"><div><span class="note-number">LESS FRICTION. MORE ANTICIPATION.</span><h2 class="note-title">Your seat, with a little breathing room.</h2></div><p class="note-copy">Choose a seat and we’ll keep it for you for two minutes. Take a moment, check the details, and confirm when you’re ready.</p></section></div>`;
+  app.innerHTML = `<div class="wrap"><section class="hero"><div class="hero-copy"><div class="eyebrow">For the moments that matter</div><h1>Some nights<br><em>stay with you.</em></h1><p>The artists you love. The places you want to be.<br>Find your next live experience, and make it yours.</p><a class="hero-link" href="#discover">Explore what’s on ${icon("arrow")}</a></div><div class="hero-picture"><img src="/images/concert.jpg" alt="A crowd gathered under the lights at a live concert" fetchpriority="high"><span class="photo-credit">LIVE, IN THE MOMENT</span><div class="hero-photo-caption"><span>MORE THAN A TICKET</span><strong>A story you’ll tell for years.</strong></div></div></section><section class="discovery" id="discover"><div class="section-heading"><h2>Worth being there for.</h2><p>${state.events.length} upcoming experiences</p></div><div class="discovery-toolbar"><div class="filters" role="group" aria-label="Event category"><button class="filter ${state.category === "all" ? "active" : ""}" data-category="all">All experiences</button><button class="filter ${state.category === "music" ? "active" : ""}" data-category="music">${icon("music")} Music</button><button class="filter ${state.category === "sports" ? "active" : ""}" data-category="sports">Sport</button><button class="filter" data-category="comedy">Comedy</button><button class="filter" data-category="theatre">Theatre</button><button class="filter" data-category="conference">Conferences</button><button class="filter" data-category="community">Community</button><button class="filter" data-category="other">Other</button></div><label class="search-box">${icon("search")}<input id="eventSearch" type="search" placeholder="Artist, event or city" aria-label="Search events" value="${esc(state.search)}"></label></div><div class="events-grid" id="eventsGrid"></div></section><section class="editorial-note"><div><span class="note-number">LESS FRICTION. MORE ANTICIPATION.</span><h2 class="note-title">Your seat, with a little breathing room.</h2></div><p class="note-copy">Compare available seats and admission options. Your selection summary shows ticket prices and whether checkout is available.</p></section></div>`;
+  document
+    .querySelectorAll("[data-category]")
+    .forEach((button) =>
+      button.classList.toggle(
+        "active",
+        button.dataset.category === state.category,
+      ),
+    );
   renderEvents();
   document.getElementById("eventSearch").addEventListener("input", (event) => {
     state.search = event.target.value;
@@ -272,6 +296,12 @@ function renderSeatMap() {
     `${state.seats.filter((s) => s.status === "FREE").length} seats available`;
 }
 function renderCheckout() {
+  const focused = document.activeElement?.id;
+  renderCheckoutContents();
+  if (["attendeeAge", "admissionQuantity"].includes(focused))
+    document.getElementById(focused)?.focus({ preventScroll: true });
+}
+function renderCheckoutContents() {
   const box = document.getElementById("checkout");
   if (!box) return;
   if (admissionSelection || state.event?.admissionMode === "GENERAL") {
@@ -498,6 +528,7 @@ async function route() {
       if (sequence !== routeSequence) return;
       renderBooking();
     } catch (err) {
+      if (sequence !== routeSequence) return;
       renderError(err);
     }
   } else renderDiscovery();
@@ -673,11 +704,12 @@ function renderAdmissionCheckout() {
     return;
   }
   const maximum = Math.max(
-    1,
+    0,
     Math.min(3, state.event?.perOrderLimit || 3, Number(type.available)),
   );
-  admissionQuantity = Math.max(1, Math.min(admissionQuantity, maximum));
-  box.innerHTML = `<h2>Your admission</h2><div class="selected-summary"><strong>${esc(type.name)}</strong><small>General admission · no assigned seat</small></div><label class="quantity-label">Tickets<input id="admissionQuantity" type="number" min="1" max="${maximum}" value="${admissionQuantity}" ${type.available <= 0 ? "disabled" : ""}></label><div class="checkout-line"><span>Price per ticket (${esc(type.currency)})</span><strong>${money(type.price, type.currency)}</strong></div><div class="checkout-line checkout-total"><span>Total</span><strong id="admissionTotal">${money(type.price * admissionQuantity, type.currency)}</strong></div>${ageDeclaration()}${!state.user ? '<button class="primary-button" data-auth="sign-in">Sign in to continue</button>' : '<button class="primary-button" disabled>Checkout unavailable</button>'}<p class="checkout-user">${type.available <= 0 ? "This ticket type is currently sold out or reserved." : "Online checkout is not yet available. Ticket selection does not reserve capacity or confirm a booking."}</p>`;
+  admissionQuantity =
+    maximum === 0 ? 0 : Math.max(1, Math.min(admissionQuantity, maximum));
+  box.innerHTML = `<h2>Your admission</h2><div class="selected-summary"><strong>${esc(type.name)}</strong><small>General admission · no assigned seat</small></div><label class="quantity-label">Tickets<input id="admissionQuantity" type="number" min="${maximum === 0 ? 0 : 1}" max="${maximum}" value="${admissionQuantity}" ${type.available <= 0 ? "disabled" : ""}></label><div class="checkout-line"><span>Price per ticket (${esc(type.currency)})</span><strong>${money(type.price, type.currency)}</strong></div><div class="checkout-line checkout-total"><span>Total</span><strong id="admissionTotal">${money(type.price * admissionQuantity, type.currency)}</strong></div>${ageDeclaration()}${!state.user ? '<button class="primary-button" data-auth="sign-in">Sign in to continue</button>' : '<button class="primary-button" disabled>Checkout unavailable</button>'}<p class="checkout-user">${type.available <= 0 ? "This ticket type is currently sold out or reserved." : "Online checkout is not yet available. Ticket selection does not reserve capacity or confirm a booking."}</p>`;
 }
 document.addEventListener("click", (event) => {
   const choice = event.target.closest("[data-admission-ticket]");
@@ -707,8 +739,9 @@ document.addEventListener("input", (event) => {
   );
   admissionQuantity = Math.max(
     1,
-    Math.min(maximum, Number(event.target.value) || 1),
+    Math.min(maximum, Math.trunc(Number(event.target.value)) || 1),
   );
+  event.target.value = String(admissionQuantity);
   document.getElementById("admissionTotal").textContent = money(
     type.price * admissionQuantity,
     type.currency,

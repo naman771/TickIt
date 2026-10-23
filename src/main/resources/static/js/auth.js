@@ -6,13 +6,16 @@ window.TickItAuth = (() => {
   let clerk = null;
   let config = {};
   let user = null;
+  let syncGeneration = 0;
   const listeners = new Set();
   const emit = () => listeners.forEach((fn) => fn(user));
   async function token() {
     return clerk?.session ? clerk.session.getToken() : null;
   }
   async function sync() {
+    const generation = ++syncGeneration;
     const bearer = await token();
+    if (generation !== syncGeneration) return;
     if (!bearer) {
       user = null;
       emit();
@@ -21,12 +24,15 @@ window.TickItAuth = (() => {
     const response = await fetch(`${base}/api/me`, {
       headers: { Authorization: `Bearer ${bearer}` },
     });
+    if (generation !== syncGeneration) return;
     if (!response.ok) {
       user = null;
       emit();
       throw new Error("Your account could not be loaded. Please try again.");
     }
-    user = await response.json();
+    const profile = await response.json();
+    if (generation !== syncGeneration) return;
+    user = profile;
     emit();
   }
   function loadScript(url, publishableKey) {
