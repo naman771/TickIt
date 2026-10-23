@@ -11,10 +11,10 @@ import com.tickit.service.ClerkUserClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(
@@ -46,6 +46,20 @@ class AccountSecurityTest {
                             .authIssuer(ISSUER)
                             .authSubject("auth_test_owner")
                             .build()));
+  }
+
+  @Test
+  void paymentsStayDisabledWithoutProviderConfiguration() throws Exception {
+    mvc.perform(get("/api/public/config"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.checkoutEnabled", is(false)));
+    mvc.perform(
+            post("/api/payments/orders")
+                .with(jwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"eventId\":1,\"idempotencyKey\":\"11111111-1111-4111-8111-111111111111\",\"seatIds\":[1],\"quantity\":0}"))
+        .andExpect(status().isServiceUnavailable());
   }
 
   @Test

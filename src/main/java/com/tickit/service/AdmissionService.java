@@ -90,7 +90,7 @@ public class AdmissionService {
     if (holds.activeForUser(user.getId(), eventId)
             + quantity
             + seatHolds.activeForUser(eventId, user.getId())
-            + bookings.countByUserIdAndEventId(user.getId(), eventId)
+            + bookings.countAllTickets(user.getId(), eventId)
         > Math.min(3, e.getPerOrderLimit()))
       throw new ResponseStatusException(
           HttpStatus.CONFLICT, "The per-account reservation limit for this event has been reached");

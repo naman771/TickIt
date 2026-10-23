@@ -12,7 +12,7 @@ Base URL: `http://localhost:8080`. Public event browsing does not require an acc
 | GET | `/api/public/config` | Public identity configuration and checkout availability |
 | GET | `/actuator/health` | Application health |
 
-Current catalog prices are in USD. No currency conversion is inferred from the customer's location.
+Catalog prices use each event's configured currency. Razorpay test checkout currently supports INR only; currency conversion is never inferred from customer location.
 
 ## Accounts and reservations
 
@@ -22,7 +22,7 @@ Current catalog prices are in USD. No currency conversion is inferred from the c
 | GET | `/api/bookings/me` | The signed-in account's booking history |
 | POST | `/api/holds` | Acquire a short-lived seat hold |
 | DELETE | `/api/holds/{eventId}/{seatId}` | Release the signed-in account's hold |
-| POST | `/api/bookings` | Unavailable outside automated tests until paid checkout is implemented |
+| POST | `/api/bookings` | Direct confirmation is disabled outside automated tests; use verified payment checkout |
 
 A hold request contains `{"eventId":1,"seatId":3}`. The server resolves the user from the signed session. A supplied `userId` is accepted only when it matches that account; it never overrides the session identity. The older history route `/api/bookings/user/{id}` is retained with the same owner check.
 
@@ -94,3 +94,33 @@ All `/api/organizer/**` routes require authentication. Every event lookup/update
 Organizer create/update payloads accept nullable `minimumAge` (1–120; null means all ages). `perOrderLimit` accepts 1–3. Public event metadata reports both. Seat and standing hold requests for restricted events require `attendeeAge` (0–120); it must meet the event minimum for every guest. Assigned-seat selection is limited to three, and reservation APIs combine the account's seat and standing holds when enforcing the effective limit.
 
 Developer-only `POST /api/developer/diagnostics` accepts `{ "attempts": 16 }` (8–32), starts an asynchronous component run, and returns 202. `GET /api/developer/diagnostics` returns the latest run and measured outcomes. A second start within 60 seconds or while running returns 429. Tests exercise real Redis Lua and PostgreSQL operations on dedicated diagnostic keys/rows, with four workers, timeouts, cleanup, and no catalog/booking writes. Status includes accepted/rejected/error counts, p95 operation latency, duration and cleanup outcome. This is not a full HTTP/payment/WebSocket load test.
+
+## Razorpay test checkout
+
+All order operations require the signed account; the webhook uses its own raw-body HMAC authentication. Payments are off by default and live keys are rejected.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/payments/orders` | Reserve one to three tickets and create a server-priced Razorpay test order |
+| GET | `/api/payments/orders/me` | Latest 100 account-owned checkout orders, including standing lines and pending/review states |
+| GET | `/api/payments/orders/{id}` | Read an account-owned checkout |
+| POST | `/api/payments/orders/{id}/verify` | Validate Checkout HMAC and fetch authoritative captured payment details |
+| POST | `/api/payments/orders/{id}/reconcile` | Recover status from provider order payments; never initiates another charge |
+| DELETE | `/api/payments/orders/{id}` | Expire an unfinished order and release its reservations; cannot undo a confirmed booking |
+| POST | `/api/payments/webhook` | Accept signed `payment.captured` and `order.paid`; repeats do not duplicate inventory |
+| GET | `/api/developer/payments/review` | Developer-only queue of uncertain creates and payments requiring review |
+
+```json
+{
+  "eventId": 42,
+  "idempotencyKey": "11111111-1111-4111-8111-111111111111",
+  "seatIds": [501, 502],
+  "ticketTypeId": null,
+  "quantity": 0,
+  "attendeeAge": 25
+}
+```
+
+For standing admission, use `seatIds: []`, a ticket type ID and a positive quantity. Mixed requests may include both, with three tickets total or the event's lower limit. Do not send a client-calculated price. Amounts returned by payment APIs and `unitAmount` are integer paise. Reuse the UUID key only for the exact same selection; changed requests return 409. Same-account/event concurrent order creation returns 409 while an earlier checkout is active. Existing account limits count confirmed standing and seated admission together.
+
+Verification payload is the standard `razorpay_order_id`, `razorpay_payment_id`, `razorpay_signature` object. The server uses its stored order ID, not a client-provided substitute. Captured amounts/currency/order IDs must match. `authorized` is not confirmation. Webhooks require `X-Razorpay-Signature`, calculated over the unmodified body with a separate webhook secret. See [payment states and limitations](PAYMENTS.md).

@@ -99,11 +99,11 @@ function render(section) {
       title: "Payment operations",
       provider: "Razorpay",
       ready: overview.integrations.payments,
-      copy: "Payment integration is pending. Customer checkout is disabled until the verified payment flow is connected.",
+      copy: "Razorpay test checkout is implemented. Enable it only after test-account keys, capture settings and signed webhooks are configured. Live keys are blocked.",
       items: [
         "Create server-side orders from authoritative ticket prices.",
         "Verify signatures, captured payment status and webhook authenticity.",
-        "Handle duplicate events, late payments, failed bookings and refunds.",
+        "Duplicate callbacks are idempotent; late captures enter review. Refund automation remains pending.",
       ],
       href: "https://razorpay.com/docs/payments/",
       label: "Razorpay documentation",

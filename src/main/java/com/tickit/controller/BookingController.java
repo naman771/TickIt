@@ -71,7 +71,7 @@ public class BookingController {
     }
 
     // 2. Try to acquire Redis hold
-    int booked = (int) bookingRepository.countByUserIdAndEventId(userId, eventId);
+    int booked = (int) bookingRepository.countAllTickets(userId, eventId);
     int limit = Math.min(3, seat.getVenue().getEvent().getPerOrderLimit());
     boolean acquired =
         seatHoldService.acquireHold(

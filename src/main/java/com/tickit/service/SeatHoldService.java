@@ -69,8 +69,57 @@ public class SeatHoldService {
             redis.execute(
                 RELEASE,
                 List.of(
-                    holdKey(eventId, seatId), INDEX, "hold:user:" + eventId + ":" + actualOwner),
+                    holdKey(eventId, seatId),
+                    INDEX,
+                    "hold:user:" + eventId + ":" + actualOwner,
+                    "checkout:lease:" + eventId + ":" + seatId),
                 owner));
+  }
+
+  /** Bind a hold generation to one checkout; stale callbacks cannot release a newer hold. */
+  public boolean bindCheckout(Long event, Long seat, Long user, java.util.UUID checkout) {
+    var script =
+        new DefaultRedisScript<Long>(
+            "if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end; "
+                + "local ttl=redis.call('PTTL',KEYS[1]); if ttl<=0 then return 0 end; "
+                + "redis.call('SET',KEYS[2],ARGV[2],'PX',ttl); return 1",
+            Long.class);
+    return Long.valueOf(1)
+        .equals(
+            redis.execute(
+                script,
+                List.of(holdKey(event, seat), "checkout:lease:" + event + ":" + seat),
+                user.toString(),
+                checkout.toString()));
+  }
+
+  public boolean isCheckoutHoldValid(Long event, Long seat, Long user, java.util.UUID checkout) {
+    var script =
+        new DefaultRedisScript<Long>(
+            "if redis.call('GET',KEYS[1])==ARGV[1] and redis.call('GET',KEYS[2])==ARGV[2] then"
+                + " return 1 end; return 0",
+            Long.class);
+    return Long.valueOf(1)
+        .equals(
+            redis.execute(
+                script,
+                List.of(holdKey(event, seat), "checkout:lease:" + event + ":" + seat),
+                user.toString(),
+                checkout.toString()));
+  }
+
+  public boolean releaseCheckout(Long event, Long seat, Long user, java.util.UUID checkout) {
+    return Long.valueOf(1)
+        .equals(
+            redis.execute(
+                RELEASE,
+                List.of(
+                    holdKey(event, seat),
+                    INDEX,
+                    "hold:user:" + event + ":" + user,
+                    "checkout:lease:" + event + ":" + seat),
+                user.toString(),
+                checkout.toString()));
   }
 
   public boolean isSeatHeld(Long eventId, Long seatId) {

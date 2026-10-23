@@ -31,6 +31,9 @@ const state = {
   event: null,
   selected: null,
   selectedSeats: [],
+  checkout: null,
+  paymentIntent: null,
+  paymentWindow: false,
   attendeeAge: "",
   user: null,
   hold: null,
@@ -108,10 +111,13 @@ let admissionPools = [],
   admissionQuantity = 1;
 const selectedSeat = () => state.seats.find((s) => s.seatId === state.selected);
 const owns = (seat) =>
-  state.hold &&
-  state.hold.eventId === state.event?.id &&
-  state.hold.seatId === seat?.seatId &&
-  state.hold.userId === state.user?.id;
+  (state.checkout?.eventId === state.event?.id &&
+    ["PENDING", "CREATING"].includes(state.checkout.status) &&
+    state.checkout.items?.some((i) => i.seatId === seat?.seatId)) ||
+  (state.hold &&
+    state.hold.eventId === state.event?.id &&
+    state.hold.seatId === seat?.seatId &&
+    state.hold.userId === state.user?.id);
 
 async function api(url, options = {}) {
   const token = await TickItAuth.token();
@@ -142,6 +148,7 @@ async function api(url, options = {}) {
         : data.error || "We couldn’t complete that request. Please try again.",
     );
     err.status = response.status;
+    err.orderId = data.orderId;
     throw err;
   }
   return data;
@@ -304,6 +311,7 @@ function renderCheckout() {
 function renderCheckoutContents() {
   const box = document.getElementById("checkout");
   if (!box) return;
+  if (renderPaymentSummary(box)) return;
   if (admissionSelection || state.event?.admissionMode === "GENERAL") {
     renderAdmissionCheckout();
     return;
@@ -315,7 +323,7 @@ function renderCheckoutContents() {
   );
   state.selectedSeats = seats.map((s) => s.seatId);
   const total = seats.reduce((n, s) => n + Number(s.price), 0);
-  box.innerHTML = `<h2>Your selection</h2><p class="checkout-user">${seats.length} / ${Math.min(3, state.event?.perOrderLimit || 3)} seats selected per account for this event</p>${seats.length ? seats.map((s) => `<div class="selected-summary"><strong>${esc(s.label)}</strong><span>${money(s.price)}</span><button class="inline-button" data-deselect-seat="${s.seatId}" aria-label="Remove ${esc(s.label)}">Remove</button></div>`).join("") : '<div class="checkout-empty">Choose up to three available seats on the map.</div>'}<div class="checkout-line checkout-total"><span>Total (${esc(state.event?.currency || "USD")})</span><strong>${money(total)}</strong></div>${seats.length ? ageDeclaration() : ""}${!state.user && seats.length ? '<button class="primary-button" data-auth="sign-in">Sign in to continue</button>' : '<button class="primary-button" disabled>Checkout unavailable</button>'}<p class="checkout-user">Online checkout is not yet available. Selecting seats does not reserve them or confirm a booking.</p>`;
+  box.innerHTML = `<h2>Your selection</h2><p class="checkout-user">${seats.length} / ${Math.min(3, state.event?.perOrderLimit || 3)} seats selected per account for this event</p>${seats.length ? seats.map((s) => `<div class="selected-summary"><strong>${esc(s.label)}</strong><span>${money(s.price)}</span><button class="inline-button" data-deselect-seat="${s.seatId}" aria-label="Remove ${esc(s.label)}">Remove</button></div>`).join("") : '<div class="checkout-empty">Choose up to three available seats on the map.</div>'}<div class="checkout-line checkout-total"><span>Total (${esc(state.event?.currency || "USD")})</span><strong>${money(total)}</strong></div>${seats.length ? ageDeclaration() : ""}${paymentButton(seats.length > 0)}<p class="checkout-user">${TickItAuth.config.checkoutEnabled ? "Tickets are reserved when checkout begins. Test checkout uses no real money." : "Online checkout is not yet available. Selecting seats does not reserve them or confirm a booking."}</p>`;
 }
 async function refreshSeats() {
   const eventId = state.event?.id;
@@ -360,93 +368,6 @@ function updateCountdown() {
     renderCheckout();
   }
 }
-async function acquire() {
-  const seat = selectedSeat();
-  if (!seat || state.busy) return;
-  if (!state.user) {
-    TickItAuth.open("sign-in");
-    return;
-  }
-  if (!TickItAuth.config.checkoutEnabled) return;
-  state.busy = true;
-  renderCheckout();
-  try {
-    const data = await api("/api/holds", {
-      method: "POST",
-      body: JSON.stringify({
-        eventId: state.event.id,
-        seatId: seat.seatId,
-      }),
-    });
-    state.hold = {
-      eventId: state.event.id,
-      seatId: seat.seatId,
-      userId: state.user.id,
-      deadline: Date.now() + data.expiresInSeconds * 1000,
-    };
-    rememberHold();
-    seat.status = "HELD";
-    renderSeatMap();
-  } catch (err) {
-    notify(err.message, true);
-    await refreshSeats();
-  } finally {
-    state.busy = false;
-    renderCheckout();
-  }
-}
-async function release() {
-  if (!state.hold || state.busy) return;
-  const h = state.hold;
-  state.busy = true;
-  renderCheckout();
-  try {
-    await api(`/api/holds/${h.eventId}/${h.seatId}`, {
-      method: "DELETE",
-    });
-    clearHold();
-    notify("Your seat has been released.");
-  } catch (err) {
-    if (err.status === 409) clearHold();
-    notify(err.message, true);
-  } finally {
-    state.busy = false;
-    await refreshSeats();
-    renderCheckout();
-  }
-}
-async function book() {
-  if (!state.hold || state.busy) return;
-  const h = state.hold,
-    e = state.event,
-    seat = selectedSeat();
-  state.busy = true;
-  renderCheckout();
-  try {
-    const result = await api("/api/bookings", {
-      method: "POST",
-      body: JSON.stringify({
-        eventId: h.eventId,
-        seatId: h.seatId,
-      }),
-    });
-    clearHold();
-    state.selected = null;
-    seat.status = "BOOKED";
-    showConfirmation(result, e, seat);
-  } catch (err) {
-    notify(err.message, true);
-    if (err.status === 410) clearHold();
-  } finally {
-    state.busy = false;
-    await refreshSeats();
-    renderCheckout();
-  }
-}
-function showConfirmation(result, event, seat) {
-  dialog.innerHTML = `<div class="confirmation-icon">${icon("check")}</div><div class="eyebrow">Reservation confirmed</div><h2 id="confirmationTitle">You’re going.</h2><p>A seat with your name on it. Your reservation details are saved in My tickets.</p><div class="confirmation-details"><h3>${esc(shortName(event))} · ${esc(tour(event))}</h3><p><span>Date</span><strong>${esc(day(event.startTime))}</strong></p><p><span>Your seat</span><strong>${esc(seat.section || "Main")} · Row ${esc(seat.row)}, Seat ${seat.number}</strong></p><p><span>Reference</span><strong>TK-${String(result.bookingId).padStart(6, "0")}</strong></p></div><button class="primary-button" data-action="view-tickets">View my tickets ${icon("arrow")}</button><button class="quiet-button" data-action="close-confirmation">Continue exploring</button><p style="font-size:9px;text-align:center">Your reservation details are saved in your account.</p>`;
-  dialog.showModal();
-}
 async function renderTickets(sequence) {
   state.view = "tickets";
   setNav("tickets");
@@ -458,8 +379,35 @@ async function renderTickets(sequence) {
     '<div class="loading-state"><span class="loader"></span>Finding your tickets…</div>';
   try {
     const tickets = await api("/api/bookings/me");
+    const orders = await api("/api/payments/orders/me");
+    const outstanding = orders.filter((o) => o.status !== "CONFIRMED");
+    const checkoutHistory = outstanding.length
+      ? `<section class="tickets-list" aria-label="Checkout history">${outstanding.map((o) => `<article class="ticket-card"><div class="ticket-body"><div class="ticket-top"><span>${esc(o.id.slice(0, 8))}</span><b class="status-badge">${esc(o.status.replaceAll("_", " "))}</b></div><h2>${esc(state.events.find((e) => e.id === o.eventId)?.name || "Event checkout")}</h2><p>${money(o.amount / 100, o.currency)} · ${o.status === "REVIEW_REQUIRED" ? "Payment needs review; no ticket confirmed." : "Check this order before attempting another payment."}</p><button class="secondary-button" data-action="resume-checkout" data-order-id="${esc(o.id)}">View checkout</button></div></article>`).join("")}</section>`
+      : "";
+    const confirmed = orders.filter((o) => o.status === "CONFIRMED");
+    const legacy = tickets.filter(
+      (t) =>
+        !confirmed.some(
+          (o) =>
+            o.eventId === t.eventId &&
+            o.items.some((i) => i.seatId === t.seatId),
+        ),
+    );
+    tickets.splice(
+      0,
+      tickets.length,
+      ...legacy,
+      ...confirmed.flatMap((o) =>
+        o.items.map((i, n) => ({
+          bookingId: `${o.id.slice(0, 8)}-${n + 1}`,
+          eventId: o.eventId,
+          seatLabel: `${i.label}${i.quantity > 1 ? ` × ${i.quantity}` : ""}`,
+          status: o.status,
+        })),
+      ),
+    );
     if (sequence !== routeSequence) return;
-    app.innerHTML = `<div class="wrap"><div class="page-heading"><div class="eyebrow">Good things ahead</div><h1>Your next “I was there.”</h1><p>Reservations for ${esc(state.user.name)}. All the details, in one place.</p></div><div class="tickets-list">${
+    app.innerHTML = `<div class="wrap"><div class="page-heading"><div class="eyebrow">Good things ahead</div><h1>Your next “I was there.”</h1><p>Reservations for ${esc(state.user.name)}. All the details, in one place.</p></div>${checkoutHistory}<div class="tickets-list">${
       tickets.length
         ? tickets
             .slice()
@@ -511,7 +459,14 @@ async function route() {
     }
     state.event = e;
     state.selected = state.hold?.eventId === id ? state.hold.seatId : null;
-    state.selectedSeats = state.selected ? [state.selected] : [];
+    state.selectedSeats =
+      state.checkout?.eventId === id && state.checkout.status === "PENDING"
+        ? state.checkout.items
+            .filter((i) => i.seatId != null)
+            .map((i) => i.seatId)
+        : state.selected
+          ? [state.selected]
+          : [];
     state.attendeeAge = "";
     admissionPools = [];
     admissionSelection = null;
@@ -579,6 +534,7 @@ app.addEventListener("click", (event) => {
   }
   const button = event.target.closest("[data-seat]");
   if (button && !button.disabled) {
+    if (state.busy || paymentLocked()) return;
     admissionSelection = null;
     renderAdmissionOptions();
     if (state.hold && state.hold.seatId !== Number(button.dataset.seat)) {
@@ -604,9 +560,19 @@ app.addEventListener("click", (event) => {
     return;
   }
   const action = event.target.closest("[data-action]")?.dataset.action;
-  if (action === "hold") acquire();
-  if (action === "book") book();
-  if (action === "release") release();
+  if (action === "resume-checkout")
+    viewCheckout(event.target.closest("[data-order-id]").dataset.orderId);
+  if (action === "pay") startPayment();
+  if (action === "resume-payment") openPayment();
+  if (action === "check-payment") checkPayment();
+  if (action === "cancel-payment") cancelPayment();
+  if (action === "clear-checkout" && state.checkout?.status === "CONFIRMED") {
+    state.checkout = null;
+    state.paymentIntent = null;
+    sessionStorage.removeItem("tickit-checkout");
+    refreshSeats();
+    renderCheckout();
+  }
   if (action === "retry") state.events.length ? route() : start();
 });
 dialog.addEventListener("click", (event) => {
@@ -639,6 +605,8 @@ TickItAuth.onChange((user) => {
   if (changed) {
     clearHold();
     state.selected = null;
+    state.checkout = null;
+    state.paymentIntent = null;
   }
   renderAccount();
   if (state.view === "tickets") route();
@@ -662,6 +630,7 @@ async function start() {
       state.hold = saved;
     else clearHold();
     state.events = await api("/api/events");
+    await restorePayment();
     await Promise.all(
       state.events.map(async (e) => {
         if (e.fromPrice == null)
@@ -709,11 +678,11 @@ function renderAdmissionCheckout() {
   );
   admissionQuantity =
     maximum === 0 ? 0 : Math.max(1, Math.min(admissionQuantity, maximum));
-  box.innerHTML = `<h2>Your admission</h2><div class="selected-summary"><strong>${esc(type.name)}</strong><small>General admission · no assigned seat</small></div><label class="quantity-label">Tickets<input id="admissionQuantity" type="number" min="${maximum === 0 ? 0 : 1}" max="${maximum}" value="${admissionQuantity}" ${type.available <= 0 ? "disabled" : ""}></label><div class="checkout-line"><span>Price per ticket (${esc(type.currency)})</span><strong>${money(type.price, type.currency)}</strong></div><div class="checkout-line checkout-total"><span>Total</span><strong id="admissionTotal">${money(type.price * admissionQuantity, type.currency)}</strong></div>${ageDeclaration()}${!state.user ? '<button class="primary-button" data-auth="sign-in">Sign in to continue</button>' : '<button class="primary-button" disabled>Checkout unavailable</button>'}<p class="checkout-user">${type.available <= 0 ? "This ticket type is currently sold out or reserved." : "Online checkout is not yet available. Ticket selection does not reserve capacity or confirm a booking."}</p>`;
+  box.innerHTML = `<h2>Your admission</h2><div class="selected-summary"><strong>${esc(type.name)}</strong><small>General admission · no assigned seat</small></div><label class="quantity-label">Tickets<input id="admissionQuantity" type="number" min="${maximum === 0 ? 0 : 1}" max="${maximum}" value="${admissionQuantity}" ${type.available <= 0 ? "disabled" : ""}></label><div class="checkout-line"><span>Price per ticket (${esc(type.currency)})</span><strong>${money(type.price, type.currency)}</strong></div><div class="checkout-line checkout-total"><span>Total</span><strong id="admissionTotal">${money(type.price * admissionQuantity, type.currency)}</strong></div>${ageDeclaration()}${paymentButton(type.available > 0 && admissionQuantity > 0)}<p class="checkout-user">${type.available <= 0 ? "This ticket type is currently sold out or reserved." : TickItAuth.config.checkoutEnabled ? "Test checkout · no real money is charged. Admission is confirmed after payment verification." : "Online checkout is not yet available. Ticket selection does not reserve capacity or confirm a booking."}</p>`;
 }
 document.addEventListener("click", (event) => {
   const choice = event.target.closest("[data-admission-ticket]");
-  if (!choice) return;
+  if (!choice || state.busy || paymentLocked()) return;
   if (state.hold) {
     notify(
       "Release your current seat before choosing another admission option.",
@@ -759,7 +728,7 @@ document.addEventListener("input", (event) => {
 });
 document.addEventListener("click", (event) => {
   const remove = event.target.closest("[data-deselect-seat]");
-  if (!remove) return;
+  if (!remove || state.busy || paymentLocked()) return;
   state.selectedSeats = state.selectedSeats.filter(
     (id) => id !== Number(remove.dataset.deselectSeat),
   );
@@ -767,3 +736,275 @@ document.addEventListener("click", (event) => {
   renderSeatMap();
   renderCheckout();
 });
+
+function paymentLocked() {
+  return (
+    state.checkout?.eventId === state.event?.id &&
+    ["CREATING", "CREATE_UNKNOWN", "PENDING"].includes(state.checkout.status)
+  );
+}
+function paymentButton(hasTickets) {
+  if (!state.user && hasTickets)
+    return '<button class="primary-button" data-auth="sign-in">Sign in to continue</button>';
+  if (!TickItAuth.config.checkoutEnabled)
+    return '<button class="primary-button" disabled>Checkout unavailable</button>';
+  return `<button class="primary-button" data-action="pay" ${!hasTickets || state.busy ? "disabled" : ""}>${state.busy ? "Preparing checkout…" : "Continue to payment"}</button>`;
+}
+function renderPaymentSummary(box) {
+  const order = state.checkout;
+  if (!order || order.eventId !== state.event?.id) return false;
+  const expired = new Date(order.expiresAt).getTime() <= Date.now();
+  const pending = order.status === "PENDING" && !expired;
+  box.innerHTML = `<h2>${order.status === "CONFIRMED" ? "Booking confirmed" : order.status === "REVIEW_REQUIRED" ? "Payment needs review" : "Your checkout"}</h2>${order.items.map((i) => `<div class="selected-summary"><strong>${esc(i.label)}${i.quantity > 1 ? ` × ${i.quantity}` : ""}</strong><span>${money((i.unitAmount * i.quantity) / 100, order.currency)}</span></div>`).join("")}<div class="checkout-line checkout-total"><span>Total</span><strong>${money(order.amount / 100, order.currency)}</strong></div><p class="checkout-user">Reference ${esc(order.id)}</p><p class="checkout-user">${order.status === "REVIEW_REQUIRED" ? "Payment was received but tickets could not be confirmed. Keep this reference for support. Do not pay again." : order.status === "CONFIRMED" ? "Your verified booking is saved in My tickets." : expired || order.status === "EXPIRED" ? "This reservation has expired. Check payment status before starting another checkout." : order.status === "CREATE_UNKNOWN" ? "Payment setup is uncertain. Check this order before retrying. No ticket is confirmed yet." : `Reserved until ${esc(new Date(order.expiresAt).toLocaleTimeString())}. Closing the payment window does not confirm a booking.`}</p>${pending ? `<button class="primary-button" data-action="resume-payment" ${state.busy ? "disabled" : ""}>Resume payment</button>` : ""}${!["CONFIRMED", "REVIEW_REQUIRED"].includes(order.status) ? `<button class="secondary-button" data-action="check-payment" ${state.busy ? "disabled" : ""}>Check payment status</button><button class="quiet-button" data-action="cancel-payment" ${state.busy ? "disabled" : ""}>Release reservation</button>` : `<a class="hero-link" href="#tickets">View my tickets</a>${order.status === "CONFIRMED" ? '<button class="quiet-button" data-action="clear-checkout">Choose more tickets</button>' : ""}`}<p class="checkout-user">Test mode · no real money charged.</p>`;
+  return true;
+}
+function savePayment() {
+  if (!state.user) return;
+  sessionStorage.setItem(
+    "tickit-checkout",
+    JSON.stringify({
+      userId: state.user.id,
+      orderId: state.checkout?.id,
+      intent: state.paymentIntent,
+    }),
+  );
+}
+async function restorePayment() {
+  try {
+    const saved = JSON.parse(
+      sessionStorage.getItem("tickit-checkout") || "null",
+    );
+    if (!saved || saved.userId !== state.user?.id) return;
+    state.paymentIntent = saved.intent;
+    if (saved.orderId)
+      state.checkout = await api(`/api/payments/orders/${saved.orderId}`);
+  } catch {
+    /* A transient connection error must not create a second order. */
+  }
+}
+let razorpayLoad;
+function loadRazorpay() {
+  if (window.Razorpay) return Promise.resolve();
+  if (razorpayLoad) return razorpayLoad;
+  razorpayLoad = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    const timer = setTimeout(() => failed(), 15000);
+    function failed() {
+      clearTimeout(timer);
+      script.remove();
+      razorpayLoad = null;
+      reject(
+        new Error(
+          "Payment window could not load. Your reservation can be resumed.",
+        ),
+      );
+    }
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => {
+      clearTimeout(timer);
+      window.Razorpay ? resolve() : failed();
+    };
+    script.onerror = failed;
+    document.head.append(script);
+  });
+  return razorpayLoad;
+}
+async function startPayment() {
+  if (state.busy || !TickItAuth.config.checkoutEnabled) return;
+  if (!state.user) {
+    TickItAuth.open("sign-in");
+    return;
+  }
+  const input = document.getElementById("attendeeAge");
+  if (input && !input.reportValidity()) return;
+  const userId = state.user.id;
+  const intent = {
+    eventId: state.event.id,
+    seatIds: admissionSelection
+      ? []
+      : [...state.selectedSeats].sort((a, b) => a - b),
+    ticketTypeId: admissionSelection,
+    quantity: admissionSelection ? admissionQuantity : 0,
+    attendeeAge: state.attendeeAge === "" ? null : Number(state.attendeeAge),
+  };
+  const { idempotencyKey, ...previous } = state.paymentIntent || {};
+  state.paymentIntent = {
+    ...intent,
+    idempotencyKey:
+      JSON.stringify(intent) === JSON.stringify(previous)
+        ? idempotencyKey
+        : crypto.randomUUID(),
+  };
+  savePayment();
+  state.busy = true;
+  renderCheckout();
+  try {
+    const order = await api("/api/payments/orders", {
+      method: "POST",
+      body: JSON.stringify(state.paymentIntent),
+    });
+    if (state.user?.id !== userId) return;
+    state.checkout = order;
+    savePayment();
+    if (order.status === "PENDING") await openPayment(true);
+    else
+      notify(
+        order.status === "CONFIRMED"
+          ? "This checkout is already confirmed."
+          : "Check your existing checkout status before trying again.",
+      );
+  } catch (err) {
+    if (err.orderId && state.user?.id === userId) {
+      try {
+        state.checkout = await api(`/api/payments/orders/${err.orderId}`);
+        savePayment();
+      } catch {
+        /* Saved intent preserves the retry key. */
+      }
+    }
+    notify(err.message, true);
+  } finally {
+    state.busy = !!state.paymentWindow;
+    renderCheckout();
+  }
+}
+async function openPayment(fromCreate = false) {
+  const order = state.checkout,
+    userId = state.user?.id;
+  if (!order || (state.busy && !fromCreate)) return;
+  state.busy = true;
+  renderCheckout();
+  try {
+    await loadRazorpay();
+    if (state.user?.id !== userId) return;
+    if (new Date(order.expiresAt).getTime() <= Date.now())
+      throw new Error(
+        "Reservation expired. Check payment status before selecting again.",
+      );
+    const checkout = new window.Razorpay({
+      key: order.keyId,
+      order_id: order.providerOrderId,
+      amount: order.amount,
+      currency: order.currency,
+      name: "TickIt",
+      description: "Event tickets",
+      prefill: { name: state.user?.name, email: state.user?.email },
+      handler: async (result) => {
+        try {
+          const verified = await api(
+            `/api/payments/orders/${order.id}/verify`,
+            { method: "POST", body: JSON.stringify(result) },
+          );
+          if (state.user?.id !== userId) return;
+          state.checkout = verified;
+          savePayment();
+          notify(
+            verified.status === "CONFIRMED"
+              ? "Payment verified. Your booking is confirmed."
+              : verified.status === "REVIEW_REQUIRED"
+                ? "Payment received; booking needs review. Do not pay again."
+                : "Payment is being verified. Check its status shortly.",
+            verified.status === "REVIEW_REQUIRED",
+          );
+          await refreshSeats();
+        } catch (err) {
+          notify(
+            `${err.message} Use Check payment status; do not pay again.`,
+            true,
+          );
+        } finally {
+          state.paymentWindow = false;
+          state.busy = false;
+          renderCheckout();
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          state.paymentWindow = false;
+          state.busy = false;
+          renderCheckout();
+          notify("Payment window closed. Your reservation remains temporary.");
+        },
+      },
+      theme: { color: "#1b584e" },
+    });
+    checkout.on("payment.failed", () =>
+      notify(
+        "Payment attempt failed. You can retry while your reservation is active.",
+        true,
+      ),
+    );
+    state.paymentWindow = true;
+    checkout.open();
+  } catch (err) {
+    state.paymentWindow = false;
+    state.busy = false;
+    notify(err.message, true);
+    renderCheckout();
+  }
+}
+async function checkPayment() {
+  if (state.busy || !state.checkout) return;
+  const id = state.checkout.id,
+    userId = state.user?.id;
+  state.busy = true;
+  renderCheckout();
+  try {
+    const order = await api(`/api/payments/orders/${id}/reconcile`, {
+      method: "POST",
+    });
+    if (state.user?.id !== userId) return;
+    state.checkout = order;
+    savePayment();
+    notify(
+      order.status === "CONFIRMED"
+        ? "Booking confirmed. View My tickets."
+        : order.status === "REVIEW_REQUIRED"
+          ? "Payment received; booking needs review. Do not pay again."
+          : "No captured payment has been confirmed yet.",
+    );
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    state.busy = false;
+    renderCheckout();
+  }
+}
+async function cancelPayment() {
+  if (state.busy || !state.checkout) return;
+  const id = state.checkout.id,
+    userId = state.user?.id;
+  state.busy = true;
+  try {
+    const order = await api(`/api/payments/orders/${id}`, { method: "DELETE" });
+    if (state.user?.id !== userId) return;
+    if (["CONFIRMED", "REVIEW_REQUIRED"].includes(order.status)) {
+      state.checkout = order;
+      savePayment();
+    } else {
+      state.checkout = null;
+      state.paymentIntent = null;
+      sessionStorage.removeItem("tickit-checkout");
+    }
+    await refreshSeats();
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    state.busy = false;
+    renderCheckout();
+  }
+}
+
+async function viewCheckout(id) {
+  const userId = state.user?.id;
+  try {
+    const order = await api(`/api/payments/orders/${encodeURIComponent(id)}`);
+    if (state.user?.id !== userId) return;
+    state.checkout = order;
+    state.paymentIntent = null;
+    savePayment();
+    routeTo(`#event/${order.eventId}`);
+  } catch (err) {
+    notify(err.message, true);
+  }
+}

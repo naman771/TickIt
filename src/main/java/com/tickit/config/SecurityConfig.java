@@ -66,6 +66,8 @@ public class SecurityConfig {
                   .requestMatchers(
                       HttpMethod.GET, "/api/events", "/api/events/**", "/api/public/config")
                   .permitAll()
+                  .requestMatchers(HttpMethod.POST, "/api/payments/webhook")
+                  .permitAll()
                   .requestMatchers("/api/**")
                   .authenticated()
                   .anyRequest()

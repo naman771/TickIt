@@ -23,7 +23,7 @@ The current budget is strictly zero. Follow [Free deployment](FREE_DEPLOYMENT.md
 |---|---|---|
 | Customer identity | [Clerk](https://clerk.com/docs/js-frontend/getting-started/quickstart) | Create an application; enable email/password and Google. |
 | Google sign-in | [Google OAuth through Clerk](https://clerk.com/docs/guides/configure/auth-strategies/social-connections/google) | Development credentials are provided by Clerk; production requires your Google Cloud OAuth credentials and configured domain. |
-| Indian payments | [Razorpay Standard Checkout](https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/integration-steps/) | Complete merchant onboarding; obtain test keys first, then approved live access. Payment integration is the next implementation phase. |
+| Indian payments | [Razorpay Standard Checkout](https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/integration-steps/) | Complete merchant onboarding; obtain test keys first, then approved live access. Test checkout is implemented; account connection and provider verification are pending. |
 | Transactional email | [Resend SMTP](https://resend.com/docs/send-with-smtp) | Verify your sending domain, configure DNS, create a server-side API key. |
 | Application and data | [Railway](https://docs.railway.com/guides/spring-boot) | Deploy the Docker application, PostgreSQL, and Redis services; configure domains, volumes, backups and monitoring. |
 
@@ -51,9 +51,9 @@ The browser receives only the publishable key. It sends short-lived bearer token
 
 Copy `.env.example` and fill it locally. Spring does not automatically load a shell `.env` file; export the variables in your terminal, configure your IDE, or set them directly in the hosting platform. Do not paste secret keys into chat or commit them.
 
-## Payment implementation still required
+## Payment activation and remaining lifecycle work
 
-The public site does not label itself as a demonstration. It also does not fabricate a successful checkout: checkout is disabled until the real payment flow is implemented and connected. The existing direct confirmation endpoint is restricted to automated tests.
+The public site does not label itself as a demonstration. It also does not fabricate a successful checkout: checkout remains disabled until the implemented test flow is connected to an account and verified. See [payment setup](PAYMENTS.md) for current implementation, safeguards and evidence. The existing direct confirmation endpoint is restricted to automated tests.
 
 The next phase must include:
 

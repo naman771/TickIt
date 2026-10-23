@@ -2,6 +2,12 @@ spring:
   application:
     name: tickit
 
+  # Provider reconciliation must not block seat-expiry notifications.
+  task:
+    scheduling:
+      pool:
+        size: 3
+
   jackson:
     deserialization:
       accept-float-as-int: false
@@ -54,6 +60,11 @@ spring:
 
 # ── Application ─────────────────────────────────────────
 app:
+  payments:
+    enabled: ${PAYMENTS_ENABLED:false}
+    key-id: ${RAZORPAY_KEY_ID:}
+    key-secret: ${RAZORPAY_KEY_SECRET:}
+    webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
   organizer:
     host: ${ORGANIZER_HOST:organizers.tickit.site}
   storage:

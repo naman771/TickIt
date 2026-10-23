@@ -50,9 +50,9 @@ Prefer running Java locally? See [local development and configuration](docs/DEVE
 
 ## Verification
 
-**89 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
+**123 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
 
-Twenty-two committed Playwright checks cover desktop/mobile customer, organizer and developer behavior and run in CI. [Bug audit and coverage limits →](docs/BUG_AUDIT.md)
+Thirty Playwright checks cover desktop/mobile customer, organizer and developer behavior and run in CI. [Bug audit and coverage limits →](docs/BUG_AUDIT.md)
 
 An additional opt-in live Neon test verifies database reads and private storage upload, listing, download integrity, anonymous denial and deletion. CI runs the local suite against PostgreSQL and Redis, validates Docker Compose, and builds the container. [Validation details →](docs/VALIDATION.md)
 
@@ -63,6 +63,10 @@ DB_USER="$(whoami)" mvn verify
 # Set TICKIT_ACCESS_TOKEN locally for an authenticated probe; one seat is briefly held.
 ./scripts/rate_limit_probe.sh http://localhost:8080 1 25
 ```
+
+## Payment checkout
+
+Razorpay **test-mode** orders, verified captured payments, signed webhooks and reconciliation are implemented for INR events. Assigned seats and standing admission confirm atomically. Payments remain disabled until a test account is connected; live keys are rejected. Late payments enter a review queue rather than assigning unavailable tickets. Refund automation and QR ticket issuance are separate work. [Setup and verification →](docs/PAYMENTS.md)
 
 ## Accounts and deployment
 

@@ -440,3 +440,181 @@ for (const area of ["customer", "organizer"]) {
     expect(errors).toEqual([]);
   });
 }
+
+async function paymentFixture(page, behavior = "success") {
+  const f = await customer(page);
+  await page.evaluate(() => {
+    TickItAuth.config.checkoutEnabled = true;
+  });
+  const calls = [];
+  const order = {
+    id: "11111111-1111-4111-8111-111111111111",
+    eventId: 901,
+    status: "PENDING",
+    amount: 100000,
+    currency: "INR",
+    mode: "test",
+    keyId: "rzp_test_fixture",
+    providerOrderId: "order_fixture",
+    expiresAt: new Date(Date.now() + 115000).toISOString(),
+    items: [
+      { seatId: 8001, label: "Main · A1", quantity: 1, unitAmount: 50000 },
+      { seatId: 8002, label: "Main · A2", quantity: 1, unitAmount: 50000 },
+    ],
+  };
+  await page.route("**/api/payments/**", async (r) => {
+    const path = new URL(r.request().url()).pathname,
+      method = r.request().method();
+    calls.push({ path, method, body: r.request().postDataJSON() });
+    if (path.endsWith("/verify")) {
+      if (behavior === "verify-error")
+        return r.fulfill({
+          status: 503,
+          json: { error: "Verification temporarily unavailable" },
+        });
+      return r.fulfill({ json: { ...order, status: "CONFIRMED" } });
+    }
+    if (path.endsWith("/reconcile"))
+      return r.fulfill({ json: { ...order, status: "CONFIRMED" } });
+    if (method === "DELETE")
+      return r.fulfill({ json: { ...order, status: "EXPIRED" } });
+    return r.fulfill({ json: order });
+  });
+  await page.evaluate((behavior) => {
+    window.Razorpay = class {
+      constructor(options) {
+        this.options = options;
+        window.paymentOptions = options;
+      }
+      on() {}
+      open() {
+        if (behavior === "dismiss") {
+          this.options.modal.ondismiss();
+          return;
+        }
+        setTimeout(
+          () =>
+            this.options.handler({
+              razorpay_order_id: "order_fixture",
+              razorpay_payment_id: "pay_fixture",
+              razorpay_signature: "a".repeat(64),
+            }),
+          10,
+        );
+      }
+    };
+  }, behavior);
+  for (const id of [8001, 8002])
+    await page.locator(`[data-seat="${id}"]`).click();
+  await page.locator("#attendeeAge").fill("25");
+  return { ...f, calls };
+}
+
+test("test checkout sends the complete selection and confirms only after server verification", async ({
+  page,
+}) => {
+  const f = await paymentFixture(page);
+  await page
+    .getByRole("button", { name: "Continue to payment", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Booking confirmed", exact: true }),
+  ).toBeVisible();
+  expect(f.calls.find((c) => c.path.endsWith("/orders")).body.seatIds).toEqual([
+    8001, 8002,
+  ]);
+  expect(f.calls.find((c) => c.path.endsWith("/orders")).body.attendeeAge).toBe(
+    25,
+  );
+  expect(f.calls.some((c) => c.path.endsWith("/verify"))).toBe(true);
+  expect(await page.evaluate(() => window.paymentOptions.order_id)).toBe(
+    "order_fixture",
+  );
+  expect(f.errors).toEqual([]);
+});
+
+test("dismissing the provider window keeps a temporary order and allows explicit release", async ({
+  page,
+}) => {
+  const f = await paymentFixture(page, "dismiss");
+  await page
+    .getByRole("button", { name: "Continue to payment", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Resume payment", exact: true }),
+  ).toBeEnabled();
+  expect(f.calls.some((c) => c.path.endsWith("/verify"))).toBe(false);
+  await page
+    .getByRole("button", { name: "Release reservation", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Continue to payment", exact: true }),
+  ).toBeVisible();
+  expect(f.calls.some((c) => c.method === "DELETE")).toBe(true);
+  expect(f.errors).toEqual([]);
+});
+
+test("a failed callback verification can recover through payment status without another charge", async ({
+  page,
+}) => {
+  const f = await paymentFixture(page, "verify-error");
+  await page
+    .getByRole("button", { name: "Continue to payment", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Check payment status", exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Check payment status", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Booking confirmed", exact: true }),
+  ).toBeVisible();
+  expect(f.calls.filter((c) => c.path.endsWith("/orders"))).toHaveLength(1);
+  expect(f.calls.some((c) => c.path.endsWith("/reconcile"))).toBe(true);
+  expect(f.errors).toEqual([]);
+});
+
+test("account history can recover a pending checkout without creating another order", async ({
+  page,
+}) => {
+  const f = await paymentFixture(page, "dismiss");
+  await page
+    .getByRole("button", { name: "Continue to payment", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Resume payment", exact: true }),
+  ).toBeEnabled();
+  const order = {
+    id: "11111111-1111-4111-8111-111111111111",
+    eventId: 901,
+    status: "PENDING",
+    amount: 100000,
+    currency: "INR",
+    mode: "test",
+    keyId: "rzp_test_fixture",
+    providerOrderId: "order_fixture",
+    expiresAt: new Date(Date.now() + 115000).toISOString(),
+    items: [
+      { seatId: 8001, label: "Main · A1", quantity: 1, unitAmount: 50000 },
+    ],
+  };
+  await page.route("**/api/bookings/me", (r) => r.fulfill({ json: [] }));
+  await page.route("**/api/payments/orders/me", (r) =>
+    r.fulfill({ json: [order] }),
+  );
+  await page.evaluate(() => {
+    location.hash = "#tickets";
+  });
+  await expect(
+    page.getByRole("button", { name: "View checkout", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "View checkout", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Resume payment", exact: true }),
+  ).toBeEnabled();
+  expect(f.calls.filter((c) => c.path.endsWith("/orders"))).toHaveLength(1);
+  expect(f.errors).toEqual([]);
+});
