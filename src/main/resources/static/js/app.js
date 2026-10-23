@@ -1125,7 +1125,7 @@ async function viewCheckout(id) {
     state.paymentIntent = null;
     savePayment();
     if (order.event && order.event.status !== "PUBLISHED") {
-      state.view = "payment";
+      state.view = "tickets";
       state.event = order.event;
       app.innerHTML = `<div class="wrap"><a class="back-link" href="/#tickets">Back to My tickets</a><h1>${esc(order.event.name)}</h1><aside class="checkout" id="checkout"></aside></div>`;
       renderPaymentSummary(document.getElementById("checkout"));

@@ -1,7 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const base = "http://127.0.0.1:4180";
 const auth =
-  'window.TickItAuth={user:{id:101,name:"Fixture account"},config:{checkoutEnabled:false},token:async()=>"fixture",onChange:()=>{},init:async()=>{},open:()=>{},signOut:async()=>{}};';
+  'window.TickItAuth={user:{id:101,name:"Fixture account"},config:{checkoutEnabled:false},token:async()=>"fixture",onChange:(fn)=>{window.fixtureAuthChange=fn},init:async()=>{},open:()=>{},signOut:async()=>{}};';
 const common = {
   name: "Independent Sessions",
   slug: "independent-sessions-mumbai",
@@ -977,5 +977,11 @@ test("removed event checkout history remains readable without a public event pag
   await page.goto("/#tickets");
   await page.getByRole("button", { name: "View checkout" }).click();
   await expect(page.locator("#checkout")).toContainText("REFUND PROCESSED");
+  await page.evaluate(() => {
+    TickItAuth.user = null;
+    window.fixtureAuthChange(null);
+  });
+  await expect(page.locator("#checkout")).toHaveCount(0);
+  await expect(page.locator("#app")).not.toContainText(order.id);
   expect(errors).toEqual([]);
 });
