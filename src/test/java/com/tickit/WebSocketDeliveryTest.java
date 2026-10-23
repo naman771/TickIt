@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.messaging.converter.MappingJackson2MessageConverter;
+import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.stomp.*;
 import org.springframework.test.annotation.DirtiesContext;
@@ -36,7 +36,7 @@ class WebSocketDeliveryTest {
                 .build());
     String destination = "/topic/seats/" + event.getId();
     var client = new WebSocketStompClient(new StandardWebSocketClient());
-    client.setMessageConverter(new MappingJackson2MessageConverter());
+    client.setMessageConverter(new JacksonJsonMessageConverter());
     StompSession subscriber = null, attacker = null;
     var queue = new LinkedBlockingQueue<SeatStatusUpdate>();
     var denied = new CompletableFuture<Boolean>();

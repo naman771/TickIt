@@ -2,7 +2,7 @@
 
 **Real-time ticket reservations, built for the rush.**
 
-A ticketing application with live seat selection, temporary reservations, and a checkout backed by PostgreSQL and Redis. Built with Java 21 and Spring Boot.
+A ticketing application with live seat selection, temporary reservations, and a checkout backed by PostgreSQL and Redis. Built with Java 21 and Spring Boot 4.0.9.
 
 [Live website](https://tickit-mpy2.onrender.com) · [Organizers](https://tickit-organizers.onrender.com) · [Developer workspace](https://tickit-mpy2.onrender.com/developer/) · [Deployment notes](docs/HOSTED_ENVIRONMENT.md)
 
@@ -50,7 +50,7 @@ Prefer running Java locally? See [local development and configuration](docs/DEVE
 
 ## Verification
 
-**87 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
+**89 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
 
 Twenty-two committed Playwright checks cover desktop/mobile customer, organizer and developer behavior and run in CI. [Bug audit and coverage limits →](docs/BUG_AUDIT.md)
 

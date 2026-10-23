@@ -8,6 +8,12 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.*;
 
 class NeonDatabaseEnvironmentTest {
+    @Test void bootDiscoversProviderAdapterThroughTheCurrentFactoryContract() {
+        var names = org.springframework.core.io.support.SpringFactoriesLoader.loadFactoryNames(
+                org.springframework.boot.EnvironmentPostProcessor.class, getClass().getClassLoader());
+        assertThat(names).contains(NeonDatabaseEnvironment.class.getName());
+    }
+
     @Test void mapsCredentialsAndUsesDirectMigrationConnection() {
         MockEnvironment env = new MockEnvironment().withProperty("DATABASE_URL",
                 "postgresql://owner:p%40ss+word@ep-example-pooler.eu-central-1.aws.neon.tech/tickitdb?sslmode=require&channel_binding=require");

@@ -46,18 +46,18 @@ node scripts/build-organizer.mjs
 python3 scripts/audit_dependencies.py
 ```
 
-The advisory command exits 1 when findings remain (including the two documented findings), and 2 if the scan could not complete; it never treats an unavailable advisory service as a clean scan.
+The advisory command exits 1 when findings remain, and 2 if the scan could not complete; it never treats an unavailable advisory service as a clean scan.
 
 Backend tests require isolated PostgreSQL and Redis test databases. Cloud database tests use a disposable Neon branch. Never point destructive fixture tests at the production database. The opt-in storage check loads credentials locally and removes only its own object.
 
-## Remaining dependency findings
+## Dependency follow-up
 
-OSV still flags `spring-webmvc:6.2.19` for two advisories:
+The published audit baseline used `spring-webmvc:6.2.19`, which OSV flagged for two advisories:
 
 - [GHSA-j9f9-w8pj-32f8](https://github.com/advisories/GHSA-j9f9-w8pj-32f8): SSE stream rendering with view fragments.
 - [GHSA-pc63-qcmh-9cmg](https://github.com/advisories/GHSA-pc63-qcmh-9cmg): `XsltView` rendering with a catch-all implicit view mapping.
 
-The reviewed application uses JSON REST responses, static HTML and STOMP WebSockets. It has no SSE fragment-rendering endpoints or configured XSLT views. Those triggering features were not found in the implementation; this is a source-based applicability assessment, not a claim that the library has no vulnerabilities. The advisories list Framework 7.0.9 as patched. A separately verified Spring Boot 4 / Framework 7 migration remains required to eliminate these dependency findings; do not introduce the affected features in the meantime.
+The local follow-up upgrades to Spring Boot 4.0.9 / Framework 7.0.10. Its OSV scan checked 177 runtime packages and returned zero flagged packages. The two findings above no longer appear. The original published audit and its 87-test count remain historical evidence; the new local suite passes 89 tests. See [framework migration verification](FRAMEWORK_MIGRATION.md) for current scope and publication status. This does not claim immunity to unknown or future vulnerabilities.
 
 ## Limits of this audit
 

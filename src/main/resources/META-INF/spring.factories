@@ -1,1 +1,1 @@
-org.springframework.boot.env.EnvironmentPostProcessor=com.tickit.config.NeonDatabaseEnvironment
+org.springframework.boot.EnvironmentPostProcessor=com.tickit.config.NeonDatabaseEnvironment

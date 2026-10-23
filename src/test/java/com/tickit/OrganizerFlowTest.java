@@ -6,7 +6,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.tickit.dto.OrganizerEventRequest;
 import com.tickit.model.*;
 import com.tickit.repository.*;
@@ -17,9 +17,9 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
@@ -43,7 +43,7 @@ class OrganizerFlowTest {
   @Autowired JdbcTemplate jdbc;
   @Autowired MockMvc mvc;
   @Autowired ObjectMapper json;
-  @MockBean CurrentUserService current;
+  @MockitoBean CurrentUserService current;
   AppUser owner, other;
 
   @BeforeEach
@@ -138,7 +138,7 @@ class OrganizerFlowTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString());
-    assertThat(publicEvents.findValuesAsText("id")).doesNotContain(id.toString());
+    assertThat(publicEvents.findValuesAsString("id")).doesNotContain(id.toString());
     mvc.perform(
             post("/api/holds")
                 .with(jwt())

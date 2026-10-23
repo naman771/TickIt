@@ -14,14 +14,14 @@ import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
-@org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
+@org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 class BookingSafetyTest {
   @Autowired EventRepository events;
   @Autowired VenueRepository venues;
@@ -33,8 +33,8 @@ class BookingSafetyTest {
   @Autowired HoldCleanupService cleanup;
   @Autowired StringRedisTemplate redis;
   @Autowired PlatformTransactionManager transactions;
-  @MockBean SimpMessagingTemplate messaging;
-  @MockBean EmailService email;
+  @MockitoBean SimpMessagingTemplate messaging;
+  @MockitoBean EmailService email;
   Event event;
   Seat seat;
   AppUser user;

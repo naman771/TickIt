@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -17,6 +17,23 @@ import org.springframework.test.web.servlet.MockMvc;
 class BookingFlowIntegrationTest {
 
   @Autowired private MockMvc mockMvc;
+  @Autowired private tools.jackson.databind.ObjectMapper json;
+
+  @Test
+  void catalogPreservesIsoDatesNumericPricesAndExplicitNulls() throws Exception {
+    var response = mockMvc.perform(get("/api/events/1"))
+        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+    var event = json.readTree(response);
+    org.junit.jupiter.api.Assertions.assertTrue(event.get("startTime").isString());
+    java.time.LocalDateTime.parse(event.get("startTime").asString());
+    org.junit.jupiter.api.Assertions.assertTrue(event.get("startInstant").isString());
+    java.time.Instant.parse(event.get("startInstant").asString());
+    // Event 1 retains selectable inventory even when another test holds a seat.
+    org.junit.jupiter.api.Assertions.assertTrue(event.get("fromPrice").isNumber());
+    org.junit.jupiter.api.Assertions.assertTrue(event.has("minimumAge"));
+    org.junit.jupiter.api.Assertions.assertTrue(event.get("minimumAge").isNull());
+  }
+
 
   @Test
   @DisplayName("GET /api/events should return seeded events with venue information")
