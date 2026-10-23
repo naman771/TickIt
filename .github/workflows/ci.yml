@@ -7,7 +7,8 @@ permissions:
   contents: read
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
@@ -40,8 +41,11 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - name: Verify preinstalled Chrome
+        run: google-chrome --version
       - run: npm run test:browser
+        env:
+          PLAYWRIGHT_BROWSER_CHANNEL: chrome
       - run: node --check src/main/resources/static/js/app.js
       - run: node --check src/main/resources/static/js/auth.js
       - run: node --check src/main/resources/static/developer/portal.js

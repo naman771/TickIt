@@ -54,3 +54,7 @@ The V4 migration plus all 17 organizer/diagnostic integration tests also passed 
 ## Bug-audit regression expansion
 
 87 local backend tests now pass, with the optional real-Neon storage test passing separately. Twenty-two committed desktop/mobile Playwright checks run in CI. Added coverage includes real socket delivery and forged-message denial, identity provisioning races, mixed-mode concurrent limits, natural expiry, database version conflicts, broker outages, malformed requests, layout validation, availability/pricing, stale routes/saves and sign-out responses. The runtime is upgraded to Spring Boot 3.5.16 with compatible library patches. Two advisories for unused MVC features remain explicitly tracked in [the audit report](BUG_AUDIT.md).
+
+### CI browser runtime
+
+GitHub Actions uses the stable Chrome supplied by the pinned Ubuntu 24.04 runner image through `PLAYWRIGHT_BROWSER_CHANNEL=chrome`. This avoids downloading another browser and its OS packages during every run. The same 54 desktop/mobile checks still run, alongside backend and container verification. CI has a 20-minute job timeout. Local users can opt into the same installed-browser channel; without that setting Playwright retains its default browser behavior.

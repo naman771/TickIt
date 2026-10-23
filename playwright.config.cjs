@@ -8,6 +8,9 @@ module.exports = defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: "http://127.0.0.1:4180",
+    ...(process.env.PLAYWRIGHT_BROWSER_CHANNEL
+      ? { channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL }
+      : {}),
     trace: "retain-on-failure",
     launchOptions: process.env.PLAYWRIGHT_CHROME_EXECUTABLE
       ? { executablePath: process.env.PLAYWRIGHT_CHROME_EXECUTABLE }
