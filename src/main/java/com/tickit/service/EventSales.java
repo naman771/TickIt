@@ -8,6 +8,15 @@ import org.springframework.web.server.ResponseStatusException;
 public final class EventSales {
   private EventSales() {}
 
+  public static void requireAge(Event e, Integer age) {
+    if (e.getMinimumAge() != null && (age == null || age < e.getMinimumAge() || age > 120))
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST,
+          "All guests must meet the minimum age of "
+              + e.getMinimumAge()
+              + ". Declare the youngest guest's age.");
+  }
+
   public static void requireOpen(Event e) {
     Instant now = Instant.now();
     ZoneId zone = ZoneId.of(e.getTimezone());

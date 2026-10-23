@@ -8,6 +8,7 @@ const state = {
   seats: [],
   pools: [],
   tool: "move",
+  editorSelection: [],
   zoom: 1,
   busy: false,
   sessionUser: null,
@@ -115,7 +116,8 @@ function initialDraft() {
     pools: [],
     salesStart: null,
     salesEnd: null,
-    perOrderLimit: 10,
+    perOrderLimit: 3,
+    minimumAge: null,
     status: "DRAFT",
   };
 }
@@ -134,6 +136,8 @@ function select(label, name, options, value) {
 }
 function editor(draft) {
   state.zoom = 1;
+  state.editorSelection = [];
+  state.tool = "move";
   state.draft = structuredClone(draft);
   state.seats = structuredClone(draft.seats || []);
   state.pools = structuredClone(draft.pools || []);
@@ -171,7 +175,7 @@ function editor(draft) {
       ["America/New_York", "New York — America/New_York"],
     ],
     draft.timezone,
-  )}${field("Maximum guest capacity", "guestCapacity", draft.guestCapacity, "number", 'required min="1" max="100000"')}${field("Sales open (optional)", "salesStart", draft.salesStart || "", "datetime-local")}${field("Sales close (optional)", "salesEnd", draft.salesEnd || "", "datetime-local")}${field("Tickets per account / order", "perOrderLimit", draft.perOrderLimit || 10, "number", 'min="1" max="10" required')}${field("Cover image URL", "imageUrl", draft.imageUrl || "", "url", 'placeholder="https://…"', true)}</div></section><section class="panel"><div class="panel-head"><div><h2><small>02</small> The place</h2><p>Use the real venue and address guests will travel to.</p></div></div><div class="fields">${field("Venue name", "venueName", draft.venueName, "text", 'required maxlength="255"')}${field("City", "city", draft.city, "text", 'required maxlength="100"')}${field("Venue address", "address", draft.address, "text", 'required maxlength="512"', true)}</div></section><section class="panel" id="seatingSection"><div class="panel-head"><div><h2><small>03</small> Shape the room</h2><p>Build a custom seat map. Each seat has its own section, label, position and INR price.</p></div></div><div class="info-strip">Templates are starting layouts. Verify the final map against your actual venue. Move seats by dragging, or use Remove to exclude unavailable positions. Maximum 1,500 assigned seats.</div><div class="section-builder"><div class="fields"><label>Section name<input id="sectionName" value="Main" maxlength="40"></label><label>Layout<select id="layoutTemplate"><option value="straight">Straight rows</option><option value="fan">Fan-shaped rows</option><option value="split">Two blocks + centre aisle</option></select></label><label>Rows<input id="rowCount" type="number" min="1" max="18" value="6"></label><label>Seats per row<input id="columnCount" type="number" min="1" max="28" value="12"></label><label>Price / seat (INR)<input id="sectionPrice" type="number" min="0" max="999999.99" step="0.01" value="500"></label><label>Left offset<input id="offsetX" type="number" min="20" max="900" value="80"></label><label>Top offset<input id="offsetY" type="number" min="80" max="650" value="130"></label><label>Row prefix<input id="rowPrefix" maxlength="5" placeholder="Optional"></label></div><div class="actions" style="padding:20px 0 0"><button type="button" data-add-section>Add section to map ＋</button><button type="button" data-clear-map>Clear map</button></div></div><div class="controls">${field("Stage label", "stageLabel", draft.stageLabel, "text", 'maxlength="80"')}${field("Stage left", "stageX", draft.stageX, "number", 'min="0" max="800"')}${field("Stage top", "stageY", draft.stageY, "number", 'min="0" max="650"')}</div><div class="map-shell"><div class="map-tools"><button type="button" class="active" data-tool="move">Move seats</button><button type="button" data-tool="remove">Remove seats</button><button type="button" data-zoom="in" aria-label="Zoom in on seating layout">＋ Zoom</button><button type="button" data-zoom="out" aria-label="Zoom out of seating layout">− Zoom</button><button type="button" data-export>Export CSV</button><button type="button" data-import>Import CSV</button><input id="seatCsv" class="hidden" type="file" accept=".csv,text/csv"><span class="count" id="seatCount"></span></div><div id="layoutMap"></div></div><p class="hint">CSV columns: section,row,number,x,y,price. Coordinates use a 1000 × 700 canvas. Imports replace the current map. Stage position is saved separately.</p></section><section class="panel" id="admissionSection"><div class="panel-head"><div><h2><small>04</small> Admission zones & tickets</h2><p>Each zone has one shared guest capacity. Ticket types within it draw from that same capacity.</p></div></div><div class="info-strip">Example: a 400-person floor can have Early Bird and Regular tickets. Selling either uses the same 400 spaces. A ticket quota limits that price tier; it does not add venue capacity.</div><div id="poolList"></div><button type="button" data-add-pool>Add admission zone ＋</button></section></fieldset><div class="actions">${!locked ? '<button class="primary" type="submit">Save draft</button><button type="button" data-publish>Publish event ↗</button>' : ""}</div><p class="hint">Publishing makes this event visible on the customer website and locks this event's layout. Ticket checkout remains unavailable until payment processing is activated.</p></div><aside class="side-note"><div class="eyebrow">Your event, at a glance</div><h3>Build with confidence.</h3><p>Assigned seats and standing zones are counted together against your maximum guest capacity.</p><div class="metric" id="inventoryTotal">0</div><small>places configured</small><p id="inventoryStatus"></p><p>Prices for new organizer events are in INR. Drafts are visible only inside your workspace.</p><hr style="border:0;border-top:1px solid #cdd8c8;margin:22px 0"><p>Publishing your event does not enable paid checkout. Guests will see the event and its admission options.</p></aside></div></form><dialog id="preview" class="preview-dialog"></dialog></section>`;
+  )}${field("Maximum guest capacity", "guestCapacity", draft.guestCapacity, "number", 'required min="1" max="100000"')}${field("Sales open (optional)", "salesStart", draft.salesStart || "", "datetime-local")}${field("Sales close (optional)", "salesEnd", draft.salesEnd || "", "datetime-local")}${field("Tickets per account / order", "perOrderLimit", Math.min(3, draft.perOrderLimit || 3), "number", 'min="1" max="3" required')}${field("Minimum guest age (optional)", "minimumAge", draft.minimumAge ?? "", "number", 'min="1" max="120" placeholder="All ages"')}<p class="hint full">Leave blank for all ages. Age eligibility is self-declared; check guest ID at entry when required.</p>${field("Cover image URL", "imageUrl", draft.imageUrl || "", "url", 'placeholder="https://…"', true)}</div></section><section class="panel"><div class="panel-head"><div><h2><small>02</small> The place</h2><p>Use the real venue and address guests will travel to.</p></div></div><div class="fields">${field("Venue name", "venueName", draft.venueName, "text", 'required maxlength="255"')}${field("City", "city", draft.city, "text", 'required maxlength="100"')}${field("Venue address", "address", draft.address, "text", 'required maxlength="512"', true)}</div></section><section class="panel" id="seatingSection"><div class="panel-head"><div><h2><small>03</small> Shape the room</h2><p>Build a custom seat map. Each seat has its own section, label, position and INR price.</p></div></div><div class="info-strip">Templates are starting layouts. Verify the final map against your actual venue. Use Select seats to choose up to 3 seats, then Move seats to drag them together or apply a shared price. Click a selected seat to deselect. Use Remove to exclude unavailable positions. Maximum 1,500 assigned seats.</div><div class="section-builder"><div class="fields"><label>Section name<input id="sectionName" value="Main" maxlength="40"></label><label>Layout<select id="layoutTemplate"><option value="straight">Straight rows</option><option value="fan">Fan-shaped rows</option><option value="split">Two blocks + centre aisle</option></select></label><label>Rows<input id="rowCount" type="number" min="1" max="18" value="6"></label><label>Seats per row<input id="columnCount" type="number" min="1" max="28" value="12"></label><label>Price / seat (INR)<input id="sectionPrice" type="number" min="0" max="999999.99" step="0.01" value="500"></label><label>Left offset<input id="offsetX" type="number" min="20" max="900" value="80"></label><label>Top offset<input id="offsetY" type="number" min="80" max="650" value="130"></label><label>Row prefix<input id="rowPrefix" maxlength="5" placeholder="Optional"></label></div><div class="actions" style="padding:20px 0 0"><button type="button" data-add-section>Add section to map ＋</button><button type="button" data-clear-map>Clear map</button></div></div><div class="controls">${field("Stage label", "stageLabel", draft.stageLabel, "text", 'maxlength="80"')}${field("Stage left", "stageX", draft.stageX, "number", 'min="0" max="800"')}${field("Stage top", "stageY", draft.stageY, "number", 'min="0" max="650"')}</div><div class="map-shell"><div class="map-tools"><button type="button" data-tool="select">Select seats (max 3)</button><button type="button" class="active" data-tool="move">Move seats</button><button type="button" data-tool="remove">Remove seats</button><button type="button" data-zoom="in" aria-label="Zoom in on seating layout">＋ Zoom</button><button type="button" data-zoom="out" aria-label="Zoom out of seating layout">− Zoom</button><button type="button" data-export>Export CSV</button><button type="button" data-import>Import CSV</button><input id="seatCsv" class="hidden" type="file" accept=".csv,text/csv"><span class="count" id="seatCount"></span></div><div class="controls"><label>Selected seat price (INR)<input id="selectedPrice" type="number" min="0" max="999999.99" step="0.01"></label><button type="button" data-price-selected>Apply price to selected</button><button type="button" data-remove-selected>Remove selected</button><button type="button" data-clear-selected>Clear selection</button><span id="selectionCount" aria-live="polite"></span></div><div id="layoutMap"></div></div><p class="hint">CSV columns: section,row,number,x,y,price. Coordinates use a 1000 × 700 canvas. Imports replace the current map. Stage position is saved separately.</p></section><section class="panel" id="admissionSection"><div class="panel-head"><div><h2><small>04</small> Admission zones & tickets</h2><p>Each zone has one shared guest capacity. Ticket types within it draw from that same capacity.</p></div></div><div class="info-strip">Example: a 400-person floor can have Early Bird and Regular tickets. Selling either uses the same 400 spaces. A ticket quota limits that price tier; it does not add venue capacity.</div><div id="poolList"></div><button type="button" data-add-pool>Add admission zone ＋</button></section></fieldset><div class="actions">${!locked ? '<button class="primary" type="submit">Save draft</button><button type="button" data-publish>Publish event ↗</button>' : ""}</div><p class="hint">Publishing makes this event visible on the customer website and locks this event's layout. Ticket checkout remains unavailable until payment processing is activated.</p></div><aside class="side-note"><div class="eyebrow">Your event, at a glance</div><h3>Build with confidence.</h3><p>Assigned seats and standing zones are counted together against your maximum guest capacity.</p><div class="metric" id="inventoryTotal">0</div><small>places configured</small><p id="inventoryStatus"></p><p>Prices for new organizer events are in INR. Drafts are visible only inside your workspace.</p><hr style="border:0;border-top:1px solid #cdd8c8;margin:22px 0"><p>Publishing your event does not enable paid checkout. Guests will see the event and its admission options.</p></aside></div></form><dialog id="preview" class="preview-dialog"></dialog></section>`;
   renderPools();
   formatSections();
   renderMap();
@@ -196,6 +200,7 @@ function readPayload() {
     salesStart: get("salesStart") || null,
     salesEnd: get("salesEnd") || null,
     perOrderLimit: Number(get("perOrderLimit")),
+    minimumAge: get("minimumAge") ? Number(get("minimumAge")) : null,
     name: get("name"),
     description: get("description"),
     category: get("category"),
@@ -252,12 +257,18 @@ function mapMarkup() {
     })
     .join(
       "",
-    )}${state.seats.map((s, i) => `<g data-map-index="${i}" class="map-seat"><rect x="${s.x}" y="${s.y}" width="22" height="22" rx="4" fill="${["#8da886", "#45765b", "#afb99a", "#6b8e8a"][sections.indexOf(s.section) % 4]}"/><text x="${s.x + 11}" y="${s.y + 15}" text-anchor="middle" font-size="9" fill="#fff">${s.number}</text><title>${esc(s.section)} / ${esc(s.row)}${s.number} · ${esc(money(s.price))}</title></g>`).join("")}</svg>`;
+    )}${state.seats.map((s, i) => `<g data-map-index="${i}" class="map-seat" role="button" tabindex="0" aria-pressed="${state.editorSelection.includes(i)}" aria-label="${esc(s.section)} ${esc(s.row)}${s.number}"><rect x="${s.x}" y="${s.y}" width="22" height="22" rx="4" stroke="${state.editorSelection.includes(i) ? "#122f24" : "none"}" stroke-width="4" fill="${["#8da886", "#45765b", "#afb99a", "#6b8e8a"][sections.indexOf(s.section) % 4]}"/><text x="${s.x + 11}" y="${s.y + 15}" text-anchor="middle" font-size="9" fill="#fff">${s.number}</text><title>${esc(s.section)} / ${esc(s.row)}${s.number} · ${esc(money(s.price))}</title></g>`).join("")}</svg>`;
 }
 function renderMap() {
   const map = document.getElementById("layoutMap");
   if (!map) return;
+  state.editorSelection = state.editorSelection.filter(
+    (i) => i < state.seats.length,
+  );
   map.innerHTML = mapMarkup();
+  const selectedCount = document.getElementById("selectionCount");
+  if (selectedCount)
+    selectedCount.textContent = `${state.editorSelection.length} / 3 selected`;
   document.getElementById("seatCount").textContent =
     state.seats.length + " assigned seats";
   updateInventory();
@@ -454,19 +465,63 @@ function parseCsv(text) {
     return { section, row, number, x, y, price };
   });
 }
+function toggleEditorSeat(index) {
+  const at = state.editorSelection.indexOf(index);
+  if (at >= 0) state.editorSelection.splice(at, 1);
+  else if (state.editorSelection.length < 3) state.editorSelection.push(index);
+  else {
+    notice(
+      "Select up to 3 seats at a time. Click a selected seat to deselect it.",
+    );
+    return;
+  }
+  renderMap();
+}
+document.addEventListener("keydown", (event) => {
+  const seat = event.target.closest("[data-map-index]");
+  if (seat && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    toggleEditorSeat(Number(seat.dataset.mapIndex));
+  }
+});
 let drag = null;
 document.addEventListener("pointerdown", (event) => {
-  if (state.draft?.status === "PUBLISHED" || state.busy) return;
+  if (state.busy) return;
   const seat = event.target.closest("[data-map-index]"),
     stage = event.target.closest("[data-stage]");
   if (!seat && !stage) return;
+  if (
+    seat &&
+    (state.tool === "select" || state.draft?.status === "PUBLISHED")
+  ) {
+    toggleEditorSeat(Number(seat.dataset.mapIndex));
+    return;
+  }
+  if (state.draft?.status === "PUBLISHED") return;
   if (seat && state.tool === "remove") {
     state.seats.splice(Number(seat.dataset.mapIndex), 1);
+    state.editorSelection = [];
     renderMap();
     return;
   }
   const svg = event.target.closest("svg");
+  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(
+    svg.getScreenCTM().inverse(),
+  );
+  const index = seat ? Number(seat.dataset.mapIndex) : null;
+  const indexes =
+    seat && state.editorSelection.includes(index)
+      ? [...state.editorSelection]
+      : seat
+        ? [index]
+        : [];
   drag = {
+    start: point,
+    originals: indexes.map((i) => ({
+      i,
+      x: state.seats[i].x,
+      y: state.seats[i].y,
+    })),
     index: seat ? Number(seat.dataset.mapIndex) : null,
     stage: !!stage,
     svg,
@@ -495,16 +550,55 @@ document.addEventListener("pointermove", (event) => {
     g.querySelector("text").setAttribute("x", x + 100);
     g.querySelector("text").setAttribute("y", y + 24);
   } else {
-    Object.assign(state.seats[drag.index], { x, y });
-    const g = drag.svg.querySelector(`[data-map-index="${drag.index}"]`);
-    g.querySelector("rect").setAttribute("x", x);
-    g.querySelector("rect").setAttribute("y", y);
-    g.querySelector("text").setAttribute("x", x + 11);
-    g.querySelector("text").setAttribute("y", y + 15);
+    const originals = drag.originals;
+    const dx = Math.max(
+      -Math.min(...originals.map((s) => s.x)),
+      Math.min(
+        970 - Math.max(...originals.map((s) => s.x)),
+        Math.round((pt.x - drag.start.x) / 10) * 10,
+      ),
+    );
+    const dy = Math.max(
+      -Math.min(...originals.map((s) => s.y)),
+      Math.min(
+        670 - Math.max(...originals.map((s) => s.y)),
+        Math.round((pt.y - drag.start.y) / 10) * 10,
+      ),
+    );
+    originals.forEach((original) => {
+      const x = original.x + dx,
+        y = original.y + dy;
+      Object.assign(state.seats[original.i], { x, y });
+      const g = drag.svg.querySelector(`[data-map-index="${original.i}"]`);
+      g.querySelector("rect").setAttribute("x", x);
+      g.querySelector("rect").setAttribute("y", y);
+      g.querySelector("text").setAttribute("x", x + 11);
+      g.querySelector("text").setAttribute("y", y + 15);
+    });
   }
 });
 document.addEventListener("pointerup", () => {
   if (drag) {
+    const moved = new Set(drag.originals.map((s) => s.i));
+    const collision = drag.originals.some((original) =>
+      state.seats.some(
+        (other, i) =>
+          !moved.has(i) &&
+          Math.abs(other.x - state.seats[original.i].x) < 22 &&
+          Math.abs(other.y - state.seats[original.i].y) < 22,
+      ),
+    );
+    if (collision) {
+      drag.originals.forEach((original) =>
+        Object.assign(state.seats[original.i], {
+          x: original.x,
+          y: original.y,
+        }),
+      );
+      notice(
+        "These seats would overlap other seats. Choose an empty area of the map.",
+      );
+    }
     drag = null;
     renderMap();
   }
@@ -538,6 +632,7 @@ document.addEventListener("change", async (event) => {
     )
       return;
     state.seats = seats;
+    state.editorSelection = [];
     renderMap();
     notice("Seat map imported. Save the draft to persist it.");
   } catch (error) {
@@ -600,12 +695,43 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (state.busy) return;
+  if (target.hasAttribute("data-clear-selected")) {
+    state.editorSelection = [];
+    renderMap();
+  }
+  if (
+    target.hasAttribute("data-price-selected") ||
+    target.hasAttribute("data-remove-selected")
+  ) {
+    if (state.draft?.status === "PUBLISHED") return;
+    if (!state.editorSelection.length) {
+      notice("Select seats first using Select seats.");
+      return;
+    }
+    if (target.hasAttribute("data-price-selected")) {
+      const input = document.getElementById("selectedPrice");
+      if (!input.value || !input.checkValidity()) {
+        notice("Enter a valid price first.");
+        return;
+      }
+      state.editorSelection.forEach(
+        (i) => (state.seats[i].price = Number(input.value)),
+      );
+    } else {
+      state.seats = state.seats.filter(
+        (s, i) => !state.editorSelection.includes(i),
+      );
+      state.editorSelection = [];
+    }
+    renderMap();
+  }
   if (target.hasAttribute("data-add-section")) addSection();
   if (
     target.hasAttribute("data-clear-map") &&
     confirm("Clear all assigned seats from this draft?")
   ) {
     state.seats = [];
+    state.editorSelection = [];
     renderMap();
   }
   if (target.dataset.zoom) {

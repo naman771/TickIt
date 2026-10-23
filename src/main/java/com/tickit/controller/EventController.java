@@ -126,7 +126,8 @@ public class EventController {
 
     return EventDto.builder()
         .id(event.getId())
-        .perOrderLimit(event.getPerOrderLimit())
+        .perOrderLimit(Math.min(3, event.getPerOrderLimit()))
+        .minimumAge(event.getMinimumAge())
         .currency(event.getCurrency())
         .category(event.getCategory())
         .city(event.getCity())

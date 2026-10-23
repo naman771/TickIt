@@ -86,6 +86,7 @@ public class OrganizerService {
     event.setSalesStart(input.salesStart());
     event.setSalesEnd(input.salesEnd());
     event.setPerOrderLimit(input.perOrderLimit());
+    event.setMinimumAge(input.minimumAge());
     event.setStartTime(input.startTime());
     event.setEndTime(input.endTime());
     event.setGuestCapacity(input.guestCapacity());
@@ -241,7 +242,8 @@ public class OrganizerService {
     data.put("city", e.getCity());
     data.put("salesStart", e.getSalesStart());
     data.put("salesEnd", e.getSalesEnd());
-    data.put("perOrderLimit", e.getPerOrderLimit());
+    data.put("perOrderLimit", Math.min(3, e.getPerOrderLimit()));
+    data.put("minimumAge", e.getMinimumAge());
     data.put("startTime", e.getStartTime());
     data.put("endTime", e.getEndTime());
     data.put("timezone", e.getTimezone());

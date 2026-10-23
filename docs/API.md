@@ -88,3 +88,9 @@ All `/api/organizer/**` routes require authentication. Every event lookup/update
 | DELETE | `/api/events/admission-holds/{id}` | Release a quantity hold owned by the authenticated account. |
 
 `GET /api/events` returns published events only. Event metadata includes category, currency, timezone/start instant, admission mode, capacity, ticket availability and stage coordinates. `totalSeats` remains the count of assigned seats; general-admission capacity is separate. Seat responses include section, row/number, x/y position and currency. New organizer events are priced in INR. See [organizer guide](ORGANIZERS.md) for inventory limits and publication behavior.
+
+## Eligibility and diagnostics
+
+Organizer create/update payloads accept nullable `minimumAge` (1–120; null means all ages). `perOrderLimit` accepts 1–3. Public event metadata reports both. Seat and standing hold requests for restricted events require `attendeeAge` (0–120); it must meet the event minimum for every guest. Assigned-seat selection is limited to three, and reservation APIs combine the account's seat and standing holds when enforcing the effective limit.
+
+Developer-only `POST /api/developer/diagnostics` accepts `{ "attempts": 16 }` (8–32), starts an asynchronous component run, and returns 202. `GET /api/developer/diagnostics` returns the latest run and measured outcomes. A second start within 60 seconds or while running returns 429. Tests exercise real Redis Lua and PostgreSQL operations on dedicated diagnostic keys/rows, with four workers, timeouts, cleanup, and no catalog/booking writes. Status includes accepted/rejected/error counts, p95 operation latency, duration and cleanup outcome. This is not a full HTTP/payment/WebSocket load test.

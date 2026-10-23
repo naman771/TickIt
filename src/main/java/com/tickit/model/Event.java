@@ -77,7 +77,10 @@ public class Event {
 
   @Builder.Default
   @Column(name = "per_order_limit", nullable = false)
-  private int perOrderLimit = 10;
+  private int perOrderLimit = 3;
+
+  @Column(name = "minimum_age")
+  private Integer minimumAge;
 
   @Column(name = "guest_capacity", nullable = false)
   private int guestCapacity;

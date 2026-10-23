@@ -33,13 +33,19 @@ public class SeatHoldService {
   }
 
   public boolean acquireHold(Long eventId, Long seatId, Long userId) {
+    return acquireHold(eventId, seatId, userId, 3);
+  }
+
+  public boolean acquireHold(Long eventId, Long seatId, Long userId, int remainingLimit) {
+    if (remainingLimit < 1) return false;
     return Long.valueOf(1)
         .equals(
             redis.execute(
                 ACQUIRE,
-                List.of(holdKey(eventId, seatId), INDEX),
+                List.of(holdKey(eventId, seatId), INDEX, "hold:user:" + eventId + ":" + userId),
                 userId.toString(),
-                String.valueOf(holdTtlSeconds)));
+                String.valueOf(holdTtlSeconds),
+                String.valueOf(Math.min(3, remainingLimit))));
   }
 
   public boolean isHoldValid(Long eventId, Long seatId, Long userId) {
@@ -56,8 +62,15 @@ public class SeatHoldService {
   }
 
   private boolean release(Long eventId, Long seatId, String owner) {
+    String actualOwner = redis.opsForValue().get(holdKey(eventId, seatId));
+    if (actualOwner == null) return false;
     return Long.valueOf(1)
-        .equals(redis.execute(RELEASE, List.of(holdKey(eventId, seatId), INDEX), owner));
+        .equals(
+            redis.execute(
+                RELEASE,
+                List.of(
+                    holdKey(eventId, seatId), INDEX, "hold:user:" + eventId + ":" + actualOwner),
+                owner));
   }
 
   public boolean isSeatHeld(Long eventId, Long seatId) {
@@ -72,6 +85,18 @@ public class SeatHoldService {
     if (values != null)
       for (int i = 0; i < ids.size(); i++) if (values.get(i) != null) held.add(ids.get(i));
     return held;
+  }
+
+  public long activeForUser(Long eventId, Long userId) {
+    var script =
+        new DefaultRedisScript<Long>(
+            "local t=redis.call('TIME');"
+                + " redis.call('ZREMRANGEBYSCORE',KEYS[1],'-inf',t[1]*1000+math.floor(t[2]/1000));"
+                + " return redis.call('ZCARD',KEYS[1])",
+            Long.class);
+    Long count = redis.execute(script, List.of("hold:user:" + eventId + ":" + userId));
+    if (count == null) throw new IllegalStateException("Redis hold count unavailable");
+    return count;
   }
 
   public long remainingSeconds(Long eventId, Long seatId) {

@@ -21,6 +21,8 @@ public class AdmissionService {
   private final AdmissionHoldRepository holds;
   private final CurrentUserService currentUser;
   private final JdbcTemplate jdbc;
+  private final SeatHoldService seatHolds;
+  private final BookingRepository bookings;
 
   @Transactional(readOnly = true)
   public List<Map<String, Object>> availability(Long eventId) {
@@ -64,7 +66,7 @@ public class AdmissionService {
   }
 
   @Transactional
-  public Map<String, Object> hold(Long eventId, Long ticketId, int quantity) {
+  public Map<String, Object> hold(Long eventId, Long ticketId, int quantity, Integer attendeeAge) {
     AppUser user = currentUser.resolve(null);
     Event e =
         events
@@ -72,10 +74,11 @@ public class AdmissionService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     if (!"PUBLISHED".equals(e.getPublicationStatus()))
       throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-    if (quantity < 1 || quantity > e.getPerOrderLimit())
+    if (quantity < 1 || quantity > Math.min(3, e.getPerOrderLimit()))
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "Choose a quantity within this event's per-order limit");
     EventSales.requireOpen(e);
+    EventSales.requireAge(e, attendeeAge);
     AdmissionTicketType type =
         tickets
             .findById(ticketId)
@@ -84,7 +87,11 @@ public class AdmissionService {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "Ticket does not belong to this event");
     AdmissionPool pool = type.getPool();
-    if (holds.activeForUser(user.getId(), eventId) + quantity > e.getPerOrderLimit())
+    if (holds.activeForUser(user.getId(), eventId)
+            + quantity
+            + seatHolds.activeForUser(eventId, user.getId())
+            + bookings.countByUserIdAndEventId(user.getId(), eventId)
+        > Math.min(3, e.getPerOrderLimit()))
       throw new ResponseStatusException(
           HttpStatus.CONFLICT, "The per-account reservation limit for this event has been reached");
     // The event row serializes competing reservations across all ticket tiers in a shared pool.

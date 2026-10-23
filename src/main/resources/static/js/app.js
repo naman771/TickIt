@@ -30,6 +30,8 @@ const state = {
   seats: [],
   event: null,
   selected: null,
+  selectedSeats: [],
+  attendeeAge: "",
   user: null,
   hold: null,
   category: "all",
@@ -188,7 +190,7 @@ function renderBooking() {
   const e = state.event;
   state.view = "booking";
   setNav("events");
-  app.innerHTML = `<div class="wrap"><div class="page-top"><a class="back-link" href="#events">${icon("back")} Back to experiences</a><div class="flow-steps" aria-label="Booking progress"><span class="active"><b>1</b>Choose a seat</span><span class="${state.hold ? "active" : ""}"><b>2</b>Reserve & confirm</span><span><b>3</b>You’re going</span></div></div><section class="event-masthead"><img src="${esc(photo(e))}" alt=""><div><div class="eyebrow">${esc(categoryName(e))} / ${esc(city(e))}</div><h1>${esc(e.name)}</h1><div class="meta-line"><span>${icon("calendar")}${esc(when(e.startInstant || e.startTime, e.timezone))} · ${esc(hour(e.startInstant || e.startTime, e.timezone))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div></section><div class="booking-layout"><section><div class="map-panel"><div class="map-head"><div><h2>Find your place in the crowd.</h2><p>Select one available seat to get started.</p></div><span class="live-indicator"><i class="live-dot"></i><span id="availabilityCount"></span></span></div><div class="stage">${isRace(e) ? "TRACK / FINISH STRAIGHT" : "STAGE / FRONT OF HOUSE"}</div><div class="map-scroll" tabindex="0" role="region" aria-label="Seat map, scroll horizontally to see every seat"><div class="seat-rows" id="seatGrid"></div></div><div class="map-legend"><span><i class="swatch"></i>Available</span><span><i class="swatch chosen"></i>Your selection</span><span><i class="swatch reserved"></i>Reserved</span><span><i class="swatch unavailable"></i>Booked</span></div></div><p class="map-caption">Prices shown in ${esc(e.currency || "USD")}. Select a seat to see its price and availability.</p></section><aside class="checkout" id="checkout" aria-label="Reservation summary"></aside></div></div>`;
+  app.innerHTML = `<div class="wrap"><div class="page-top"><a class="back-link" href="#events">${icon("back")} Back to experiences</a><div class="flow-steps" aria-label="Booking progress"><span class="active"><b>1</b>Choose a seat</span><span class="${state.hold ? "active" : ""}"><b>2</b>Reserve & confirm</span><span><b>3</b>You’re going</span></div></div><section class="event-masthead"><img src="${esc(photo(e))}" alt=""><div><div class="eyebrow">${esc(categoryName(e))} / ${esc(city(e))}</div><h1>${esc(e.name)}</h1><div class="meta-line"><span>${icon("calendar")}${esc(when(e.startInstant || e.startTime, e.timezone))} · ${esc(hour(e.startInstant || e.startTime, e.timezone))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div></section><div class="booking-layout"><section><div class="map-panel"><div class="map-head"><div><h2>Find your place in the crowd.</h2><p>Select up to ${Math.min(3, e.perOrderLimit || 3)} available seats. Click again to deselect.</p></div><span class="live-indicator"><i class="live-dot"></i><span id="availabilityCount"></span></span></div><div class="stage">${isRace(e) ? "TRACK / FINISH STRAIGHT" : "STAGE / FRONT OF HOUSE"}</div><div class="map-scroll" tabindex="0" role="region" aria-label="Seat map, scroll horizontally to see every seat"><div class="seat-rows" id="seatGrid"></div></div><div class="map-legend"><span><i class="swatch"></i>Available</span><span><i class="swatch chosen"></i>Your selection</span><span><i class="swatch reserved"></i>Reserved</span><span><i class="swatch unavailable"></i>Booked</span></div></div><p class="map-caption">Prices shown in ${esc(e.currency || "USD")}. Select a seat to see its price and availability.</p></section><aside class="checkout" id="checkout" aria-label="Reservation summary"></aside></div></div>`;
   const mode = e.admissionMode || "SEATED";
   const mapPanel = document.querySelector(".map-panel");
   if (mode === "GENERAL") {
@@ -204,6 +206,13 @@ function renderBooking() {
       '<section class="map-panel admission-panel"><div class="map-head"><div><h2>Prefer general admission?</h2><p>These zones have no assigned seats.</p></div></div><div id="admissionOptions"></div></section>',
     );
   }
+  if (e.minimumAge)
+    document
+      .querySelector(".event-masthead")
+      .insertAdjacentHTML(
+        "afterend",
+        `<p class="map-caption age-restriction"><strong>Ages ${e.minimumAge}+</strong> · Every guest must meet this age requirement. Bring valid ID if requested at entry.</p>`,
+      );
   renderSeatMap();
   renderAdmissionOptions();
   renderCheckout();
@@ -233,7 +242,7 @@ function renderSeatMap() {
       })
       .join(
         "",
-      )}${state.seats.map((s) => `<button class="seat ${s.status.toLowerCase()} ${state.selected === s.seatId ? "selected" : ""}" data-seat="${s.seatId}" data-status="${s.status}" style="position:absolute;left:${s.x}px;top:${s.y}px" title="${esc(s.label)}" aria-label="${esc(s.label)}, ${money(s.price, s.currency)}, ${esc(s.status.toLowerCase())}" ${s.status === "BOOKED" || (s.status === "HELD" && !owns(s)) ? "disabled" : ""}>${s.number}</button>`).join("")}</div>`;
+      )}${state.seats.map((s) => `<button class="seat ${s.status.toLowerCase()} ${state.selectedSeats.includes(s.seatId) ? "selected" : ""}" data-seat="${s.seatId}" data-status="${s.status}" style="position:absolute;left:${s.x}px;top:${s.y}px" title="${esc(s.label)}" aria-label="${esc(s.label)}, ${money(s.price, s.currency)}, ${esc(s.status.toLowerCase())}" ${s.status === "BOOKED" || (s.status === "HELD" && !owns(s)) ? "disabled" : ""}>${s.number}</button>`).join("")}</div>`;
     const oldStage = document.querySelector(".map-panel > .stage");
     if (oldStage) oldStage.hidden = true;
     document.getElementById("availabilityCount").textContent =
@@ -253,7 +262,7 @@ function renderSeatMap() {
           .sort((a, b) => a.number - b.number)
           .map((s) => {
             const owned = owns(s),
-              chosen = state.selected === s.seatId;
+              chosen = state.selectedSeats.includes(s.seatId);
             return `<button class="seat ${s.status.toLowerCase()} ${chosen ? "selected" : ""} ${owned ? "owned" : ""}" data-seat="${s.seatId}" data-status="${s.status}" aria-label="Row ${esc(s.row)}, seat ${s.number}, ${money(s.price)}, ${s.status.toLowerCase()}" aria-pressed="${chosen}" ${s.status === "BOOKED" || (s.status === "HELD" && !owned) ? "disabled" : ""}>${s.number}</button>`;
           })
           .join("")}</div><span class="row-label">${esc(row)}</span></div>`,
@@ -269,25 +278,14 @@ function renderCheckout() {
     renderAdmissionCheckout();
     return;
   }
-  const seat = selectedSeat(),
-    held = owns(seat);
-  document
-    .querySelectorAll(".flow-steps span")[1]
-    ?.classList.toggle("active", !!held);
-  if (!seat) {
-    box.innerHTML = `<h2>Your reservation</h2><div class="checkout-empty">${icon("ticket")}A great night starts with a seat.<br>Choose one on the map.</div><button class="primary-button" disabled>Select a seat to continue ${icon("arrow")}</button><p class="checkout-footnote">${icon("lock")}Secure checkout</p>`;
-    return;
-  }
-  if (!state.user) {
-    box.innerHTML = `<h2>Your reservation</h2><div class="selected-summary"><div><strong>${esc(seat.section || "Main")} · Row ${esc(seat.row)}, Seat ${seat.number}</strong><small>Standard admission · 1 ticket</small></div><span class="section-tag">${esc(seat.label)}</span></div><div class="checkout-line checkout-total"><span>Ticket price (${esc(state.event?.currency || "USD")})</span><strong>${money(seat.price)}</strong></div><button class="primary-button" data-auth="sign-in">Sign in to continue ${icon("arrow")}</button><p class="checkout-user">New here? <button class="inline-button" data-auth="sign-up">Create an account</button></p>`;
-    return;
-  }
-  if (!TickItAuth.config.checkoutEnabled) {
-    box.innerHTML = `<h2>Your reservation</h2><div class="selected-summary"><strong>${esc(seat.section || "Main")} · Row ${esc(seat.row)}, Seat ${seat.number}</strong></div><div class="checkout-line checkout-total"><span>Ticket price (${esc(state.event?.currency || "USD")})</span><strong>${money(seat.price)}</strong></div><button class="primary-button" disabled>Checkout unavailable</button><p class="checkout-user">Online booking is temporarily unavailable for this experience. Please check back later.</p>`;
-    return;
-  }
-  box.innerHTML = `<h2>Your reservation</h2>${held ? '<div class="hold-timer"><span>Seat reserved for you</span><strong id="holdCountdown"></strong></div>' : ""}<div class="selected-summary"><div><strong>${esc(seat.section || "Main")} · Row ${esc(seat.row)}, Seat ${seat.number}</strong><small>Standard admission · 1 ticket</small></div><span class="section-tag">${esc(seat.label)}</span></div><div class="checkout-line"><span>Ticket price</span><span>${money(seat.price)}</span></div><div class="checkout-line"><span>Booking fee</span><span>${money(0)}</span></div><div class="checkout-line checkout-total"><span>Total <small>(${esc(state.event?.currency || "USD")})</small></span><strong>${money(seat.price)}</strong></div><button class="primary-button" id="${held ? "bookBtn" : "holdBtn"}" data-action="${held ? "book" : "hold"}" ${state.busy || seat.status === "BOOKED" ? "disabled" : ""}>${state.busy ? "Just a moment…" : held ? "Confirm reservation" : "Reserve this seat"} ${icon("arrow")}</button>${held ? '<button class="quiet-button" id="releaseBtn" data-action="release">Release this seat</button>' : ""}<p class="checkout-footnote">${icon("lock")}Secure checkout</p><p class="checkout-user">Reserving as ${esc(state.user.name)}.<br>${held ? "Your hold expires automatically if you leave." : "You’ll have two minutes to confirm your seat."}</p>`;
-  updateCountdown();
+  const seats = state.seats.filter(
+    (s) =>
+      state.selectedSeats.includes(s.seatId) &&
+      (s.status === "FREE" || owns(s)),
+  );
+  state.selectedSeats = seats.map((s) => s.seatId);
+  const total = seats.reduce((n, s) => n + Number(s.price), 0);
+  box.innerHTML = `<h2>Your selection</h2><p class="checkout-user">${seats.length} / ${Math.min(3, state.event?.perOrderLimit || 3)} seats selected per account for this event</p>${seats.length ? seats.map((s) => `<div class="selected-summary"><strong>${esc(s.section || "Main")} · ${esc(s.label)}</strong><span>${money(s.price)}</span><button class="inline-button" data-deselect-seat="${s.seatId}" aria-label="Remove ${esc(s.label)}">Remove</button></div>`).join("") : '<div class="checkout-empty">Choose up to three available seats on the map.</div>'}<div class="checkout-line checkout-total"><span>Total (${esc(state.event?.currency || "USD")})</span><strong>${money(total)}</strong></div>${seats.length ? ageDeclaration() : ""}${!state.user && seats.length ? '<button class="primary-button" data-auth="sign-in">Sign in to continue</button>' : '<button class="primary-button" disabled>Checkout unavailable</button>'}<p class="checkout-user">Online checkout is not yet available. Selecting seats does not reserve them or confirm a booking.</p>`;
 }
 async function refreshSeats() {
   const eventId = state.event?.id;
@@ -307,6 +305,9 @@ async function refreshSeats() {
       state.selected = null;
       if (state.hold?.eventId === eventId) clearHold();
     }
+    state.selectedSeats = state.selectedSeats.filter((id) =>
+      seats.some((s) => s.seatId === id && (s.status === "FREE" || owns(s))),
+    );
     renderSeatMap();
     renderCheckout();
   } catch {
@@ -480,6 +481,8 @@ async function route() {
     }
     state.event = e;
     state.selected = state.hold?.eventId === id ? state.hold.seatId : null;
+    state.selectedSeats = state.selected ? [state.selected] : [];
+    state.attendeeAge = "";
     admissionPools = [];
     admissionSelection = null;
     admissionQuantity = 1;
@@ -551,7 +554,20 @@ app.addEventListener("click", (event) => {
       notify("Release your current seat before choosing another.");
       return;
     }
-    state.selected = Number(button.dataset.seat);
+    const id = Number(button.dataset.seat);
+    const index = state.selectedSeats.indexOf(id);
+    if (index >= 0) state.selectedSeats.splice(index, 1);
+    else if (
+      state.selectedSeats.length < Math.min(3, state.event?.perOrderLimit || 3)
+    )
+      state.selectedSeats.push(id);
+    else {
+      notify(
+        "You can select up to 3 seats per account, or this event's lower limit. Remove a seat to choose another.",
+      );
+      return;
+    }
+    state.selected = state.selectedSeats[0] || null;
     renderSeatMap();
     renderCheckout();
     return;
@@ -658,10 +674,10 @@ function renderAdmissionCheckout() {
   }
   const maximum = Math.max(
     1,
-    Math.min(state.event?.perOrderLimit || 10, Number(type.available)),
+    Math.min(3, state.event?.perOrderLimit || 3, Number(type.available)),
   );
   admissionQuantity = Math.max(1, Math.min(admissionQuantity, maximum));
-  box.innerHTML = `<h2>Your admission</h2><div class="selected-summary"><strong>${esc(type.name)}</strong><small>General admission · no assigned seat</small></div><label class="quantity-label">Tickets<input id="admissionQuantity" type="number" min="1" max="${maximum}" value="${admissionQuantity}" ${type.available <= 0 ? "disabled" : ""}></label><div class="checkout-line"><span>Price per ticket (${esc(type.currency)})</span><strong>${money(type.price, type.currency)}</strong></div><div class="checkout-line checkout-total"><span>Total</span><strong id="admissionTotal">${money(type.price * admissionQuantity, type.currency)}</strong></div>${!state.user ? '<button class="primary-button" data-auth="sign-in">Sign in to continue</button>' : '<button class="primary-button" disabled>Checkout unavailable</button>'}<p class="checkout-user">${type.available <= 0 ? "This ticket type is currently sold out or reserved." : "Online checkout is not yet available. Ticket selection does not reserve capacity or confirm a booking."}</p>`;
+  box.innerHTML = `<h2>Your admission</h2><div class="selected-summary"><strong>${esc(type.name)}</strong><small>General admission · no assigned seat</small></div><label class="quantity-label">Tickets<input id="admissionQuantity" type="number" min="1" max="${maximum}" value="${admissionQuantity}" ${type.available <= 0 ? "disabled" : ""}></label><div class="checkout-line"><span>Price per ticket (${esc(type.currency)})</span><strong>${money(type.price, type.currency)}</strong></div><div class="checkout-line checkout-total"><span>Total</span><strong id="admissionTotal">${money(type.price * admissionQuantity, type.currency)}</strong></div>${ageDeclaration()}${!state.user ? '<button class="primary-button" data-auth="sign-in">Sign in to continue</button>' : '<button class="primary-button" disabled>Checkout unavailable</button>'}<p class="checkout-user">${type.available <= 0 ? "This ticket type is currently sold out or reserved." : "Online checkout is not yet available. Ticket selection does not reserve capacity or confirm a booking."}</p>`;
 }
 document.addEventListener("click", (event) => {
   const choice = event.target.closest("[data-admission-ticket]");
@@ -674,6 +690,7 @@ document.addEventListener("click", (event) => {
   }
   admissionSelection = Number(choice.dataset.admissionTicket);
   state.selected = null;
+  state.selectedSeats = [];
   renderAdmissionOptions();
   renderSeatMap();
   renderCheckout();
@@ -686,7 +703,7 @@ document.addEventListener("input", (event) => {
   if (!type) return;
   const maximum = Math.max(
     1,
-    Math.min(state.event?.perOrderLimit || 10, Number(type.available)),
+    Math.min(3, state.event?.perOrderLimit || 3, Number(type.available)),
   );
   admissionQuantity = Math.max(
     1,
@@ -696,4 +713,24 @@ document.addEventListener("input", (event) => {
     type.price * admissionQuantity,
     type.currency,
   );
+});
+
+function ageDeclaration() {
+  const minimum = state.event?.minimumAge;
+  return minimum
+    ? `<label class="quantity-label">Youngest guest's age<input id="attendeeAge" type="number" min="${minimum}" max="120" required value="${esc(state.attendeeAge)}" aria-describedby="ageHelp"></label><p id="ageHelp" class="checkout-user">All guests must be ${minimum} or older. This is a declaration; the organizer may check ID at entry.</p>`
+    : "";
+}
+document.addEventListener("input", (event) => {
+  if (event.target.id === "attendeeAge") state.attendeeAge = event.target.value;
+});
+document.addEventListener("click", (event) => {
+  const remove = event.target.closest("[data-deselect-seat]");
+  if (!remove) return;
+  state.selectedSeats = state.selectedSeats.filter(
+    (id) => id !== Number(remove.dataset.deselectSeat),
+  );
+  state.selected = state.selectedSeats[0] || null;
+  renderSeatMap();
+  renderCheckout();
 });

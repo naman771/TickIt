@@ -7,7 +7,7 @@ The organizer frontend is a separate static website. Customer pages contain no o
 ## Create and publish an event
 
 1. Sign in or sign up with Clerk, then create an organizer profile using your display/organization name.
-2. Create a private event draft. Set category, admission format, venue/address, city, date/time, timezone, guest capacity, cover image HTTPS URL, optional sales dates and ticket limit.
+2. Create a private event draft. Set category, admission format, venue/address, city, date/time, timezone, guest capacity, cover image HTTPS URL, optional sales dates, a ticket limit of 1–3 per account and an optional minimum guest age. Blank minimum age means all ages.
 3. For assigned seating, add and position sections or import a seat CSV. For standing admission, create shared-capacity zones and their ticket types. Mixed events support both.
 4. Save and preview. Drafts are excluded from every public event, seat-map and admission endpoint.
 5. Publish when ready. Publishing validates the description, future event time and appropriate inventory. Published events become discoverable and are read-only in this release. Duplicate a published event to create an independent draft for another edition.
@@ -16,7 +16,7 @@ New organizer events use INR. Existing legacy event prices retain their recorded
 
 ## Seating layouts
 
-Each event stores its own seats, sections, row labels, coordinates and prices. Templates provide straight rows, fan-shaped rows and a centre aisle; they are editable starting points, not verified plans for named halls. Seats can be moved or removed, and the stage position/label can be changed. Zoom controls support detailed editing on smaller screens.
+Each event stores its own seats, sections, row labels, coordinates and prices. Templates provide straight rows, fan-shaped rows and a centre aisle; they are editable starting points, not verified plans for named halls. Select up to three seats at a time to apply prices or remove them together. Switch to Move seats to drag a selected group while retaining its spacing. This editor selection limit does not limit venue capacity. Seats can also be moved or removed individually, and the stage position/label can be changed. Zoom controls support detailed editing on smaller screens.
 
 CSV header: `section,row,number,x,y,price`. The canvas is 1000 × 700; seat origins are bounded to x=0–970, y=0–670. Imports replace the current draft map after confirmation. Unique section/row/number labels and positions are checked server-side. Up to 1,500 assigned seats, 12 standing zones and 8 ticket types per zone are supported.
 
@@ -41,3 +41,9 @@ For local development, allow `http://localhost:8081,http://localhost:8083` in th
 Thirteen integration tests cover ownership, role separation, draft privacy, custom layouts, stale revisions, publishing locks, invalid inputs, sales windows and concurrent reservations across shared-price tiers. The V3 migration and these flows also passed on a temporary Neon copy of production; that branch was removed afterward. Browser checks use explicit UI fixtures and cover CSV import/export, custom seating, mixed admission, preview, publishing, INR pricing, GA quantities and mobile layout. No sample organizer events were inserted into the public catalog.
 
 The live organizer origin was tested with real Clerk scripts and the production API: Google sign-in UI loaded, cross-origin requests reached protected routes, and no browser errors occurred. Completing OAuth and creating a real event uses the organizer's own session; automated flow data stayed in isolated tests.
+
+## Customer limits and age eligibility
+
+Customers can select and deselect up to three assigned seats with itemized pricing and a combined total. An organizer may set a lower per-account limit. The reservation APIs enforce the same ceiling across active seat holds, standing holds and existing assigned-seat bookings for an event. Redis atomically prevents parallel seat requests from exceeding the available allowance; the event transaction serializes mixed-mode allocation. A person with multiple accounts is not automatically identified as the same person.
+
+An optional minimum age is persisted with the event, displayed to customers, and enforced on seat and standing hold requests via `attendeeAge` (the youngest guest's declared age). This is self-declaration, not verified age or identity-document checking. Organizers remain responsible for any required entry checks. Public paid checkout remains disabled until payment integration is complete.

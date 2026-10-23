@@ -42,3 +42,11 @@ The expanded local suite now has 48 passing tests, including provider URL conver
 ## Organizer catalog validation
 
 The local suite now passes 61 tests; one optional live-storage test is skipped by default. Thirteen organizer integration tests validate owner-only access, private drafts, custom map persistence, publication locks, revisions, admission-mode/capacity validation, sales windows, exact-origin CORS, and concurrent reservations across ticket tiers. The V3 migration and all thirteen organizer tests also passed on an isolated Neon branch, which was then deleted. Browser fixtures verified organizer creation/editing, CSV import/export, preview and publishing controls, custom customer layouts, INR pricing, standing quantities and mobile layout. No test events were published into the production catalog.
+
+## Multi-selection, eligibility and diagnostics
+
+The regression suite now has 66 passing tests and one optional cloud-storage test skipped by default. Added coverage includes parallel attempts for different seats capped at three per account, owner-only release freeing allowance, optional age persistence and enforcement for seated/standing admission, mixed-mode allowance accounting, invalid age rejection, developer-only diagnostic APIs, bounded request validation, run cooldown, measured real Redis/PostgreSQL contention and diagnostic cleanup without catalog/booking changes.
+
+Chrome fixture checks cover organizer three-seat selection and bulk pricing, customer three-seat selection/totals/deselection, minimum-age controls and declarations, standing quantities capped at three, and developer test controls/results. All three pages were checked for mobile overflow and JavaScript errors.
+
+The V4 migration plus all 17 organizer/diagnostic integration tests also passed on a disposable Neon branch of production. Production context was restored and the branch deleted after verification.

@@ -55,8 +55,14 @@ function render(section) {
     authentication: "Authentication",
     payments: "Payments",
     email: "Email delivery",
+    testing: "Pipeline testing",
   };
   document.getElementById("pageLabel").textContent = titles[section];
+  if (section === "testing") {
+    content.innerHTML = `<div class="section-title"><div><div class="eyebrow">CONTROLLED CONTENTION</div><h1>Pipeline testing</h1><p>Run concurrent bot attempts against isolated diagnostic data.</p></div></div><section class="panel"><h2>Component stress check</h2><p>Tests the real Redis hold script, PostgreSQL uniqueness and version conflicts, and atomic token bucket. Uses four workers and up to 32 attempts per check. One run per minute.</p><p>Diagnostic records are isolated from your catalog and bookings. This checks component invariants; it does not simulate browser traffic, payment capture, WebSocket delivery or prove production load capacity.</p><form id="diagnosticForm"><label>Attempts per check <input name="attempts" type="number" min="8" max="32" value="16" required></label> <button class="refresh" type="submit">Run bot test</button></form><div id="diagnosticResult" role="status" aria-live="polite">Loading latest result…</div></section>`;
+    loadDiagnostics();
+    return;
+  }
   if (section === "storage") {
     content.innerHTML = `<div class="section-title"><div><div class="eyebrow">PRIVATE FILES</div><h1>Asset storage</h1><p>Private workspace files stored with Neon. Maximum 5 MB per file.</p></div>${badge(overview.services.objectStorage)}</div><section class="panel"><form id="assetUpload"><label for="assetFile">Choose a file</label> <input id="assetFile" name="file" type="file" required /><button class="refresh" type="submit">Upload file</button></form><p id="assetStatus" role="status" aria-live="polite"></p><div id="assetList">Loading files…</div><p>Showing up to 100 files. Files download as attachments.</p></section>`;
     loadAssets();
@@ -142,11 +148,15 @@ TickItAuth.init()
 async function assetRequest(path = "", options = {}) {
   const token = await TickItAuth.token();
   const response = await fetch(`/api/developer/assets${path}`, {
-    ...options, headers: { Authorization: `Bearer ${token}` },
+    ...options,
+    headers: { Authorization: `Bearer ${token}` },
   });
-  if (!response.ok) throw new Error(response.status === 503
-    ? "Asset storage is unavailable. Please try again later."
-    : "The file operation failed. Check access and the 5 MB file limit.");
+  if (!response.ok)
+    throw new Error(
+      response.status === 503
+        ? "Asset storage is unavailable. Please try again later."
+        : "The file operation failed. Check access and the 5 MB file limit.",
+    );
   return response;
 }
 async function loadAssets() {
@@ -154,30 +164,46 @@ async function loadAssets() {
     const files = await (await assetRequest()).json();
     const list = document.getElementById("assetList");
     if (!list) return;
-    list.innerHTML = files.length ? files.map(file => `<div class="status-row"><span>${escapeHtml(file.id)}<small> · ${Number(file.size).toLocaleString()} bytes</small></span><span><button class="refresh" data-download-asset="${escapeHtml(file.id)}">Download</button> <button class="refresh" data-delete-asset="${escapeHtml(file.id)}">Delete</button></span></div>`).join("") : "No files uploaded yet.";
-  } catch (error) { assetStatus(error.message); }
+    list.innerHTML = files.length
+      ? files
+          .map(
+            (file) =>
+              `<div class="status-row"><span>${escapeHtml(file.id)}<small> · ${Number(file.size).toLocaleString()} bytes</small></span><span><button class="refresh" data-download-asset="${escapeHtml(file.id)}">Download</button> <button class="refresh" data-delete-asset="${escapeHtml(file.id)}">Delete</button></span></div>`,
+          )
+          .join("")
+      : "No files uploaded yet.";
+  } catch (error) {
+    assetStatus(error.message);
+  }
 }
 function assetStatus(text) {
   const status = document.getElementById("assetStatus");
   if (status) status.textContent = text;
 }
-document.addEventListener("submit", async event => {
+document.addEventListener("submit", async (event) => {
   if (event.target.id !== "assetUpload") return;
   event.preventDefault();
   const file = document.getElementById("assetFile").files[0];
   if (!file || file.size === 0 || file.size > 5 * 1024 * 1024) {
-    assetStatus("Choose a file between 1 byte and 5 MB."); return;
+    assetStatus("Choose a file between 1 byte and 5 MB.");
+    return;
   }
   const button = event.target.querySelector("button");
   button.disabled = true;
   try {
-    const body = new FormData(); body.append("file", file);
+    const body = new FormData();
+    body.append("file", file);
     await assetRequest("", { method: "POST", body });
-    event.target.reset(); assetStatus("File uploaded."); await loadAssets();
-  } catch (error) { assetStatus(error.message); }
-  finally { button.disabled = false; }
+    event.target.reset();
+    assetStatus("File uploaded.");
+    await loadAssets();
+  } catch (error) {
+    assetStatus(error.message);
+  } finally {
+    button.disabled = false;
+  }
 });
-document.addEventListener("click", async event => {
+document.addEventListener("click", async (event) => {
   const download = event.target.closest("[data-download-asset]");
   const remove = event.target.closest("[data-delete-asset]");
   if (!download && !remove) return;
@@ -186,15 +212,64 @@ document.addEventListener("click", async event => {
   try {
     if (remove) {
       if (!window.confirm("Delete this file permanently?")) return;
-      await assetRequest(`/${encodeURIComponent(remove.dataset.deleteAsset)}`, { method: "DELETE" });
-      assetStatus("File deleted."); await loadAssets();
+      await assetRequest(`/${encodeURIComponent(remove.dataset.deleteAsset)}`, {
+        method: "DELETE",
+      });
+      assetStatus("File deleted.");
+      await loadAssets();
     } else {
-      const response = await assetRequest(`/${encodeURIComponent(download.dataset.downloadAsset)}`);
+      const response = await assetRequest(
+        `/${encodeURIComponent(download.dataset.downloadAsset)}`,
+      );
       const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement("a"); link.href = url;
-      link.download = `${download.dataset.downloadAsset}.bin`; link.click();
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${download.dataset.downloadAsset}.bin`;
+      link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
-  } catch (error) { assetStatus(error.message); }
-  finally { button.disabled = false; }
+  } catch (error) {
+    assetStatus(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+let diagnosticTimer;
+async function loadDiagnostics(startAttempts) {
+  clearTimeout(diagnosticTimer);
+  const box = document.getElementById("diagnosticResult");
+  if (!box) return;
+  const button = document.querySelector("#diagnosticForm button");
+  if (button) button.disabled = true;
+  try {
+    const token = await TickItAuth.token();
+    const response = await fetch("/api/developer/diagnostics", {
+      method: startAttempts ? "POST" : "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      ...(startAttempts
+        ? { body: JSON.stringify({ attempts: startAttempts }) }
+        : {}),
+    });
+    const result = await response.json();
+    if (!response.ok)
+      throw new Error(
+        result.error || "Test could not start. Wait one minute between runs.",
+      );
+    box.innerHTML = `<h3>${escapeHtml(result.status)}</h3>${result.checks ? `<p>${result.attempts} attempts/check · ${result.concurrency} workers · ${result.durationMs} ms · Cleanup ${result.cleanupComplete ? "complete" : "incomplete"}</p>${result.checks.map((c) => `<div class="status-row"><span>${escapeHtml(c.name)}<br><small>${c.accepted} accepted · ${c.rejected} rejected · ${c.errors} errors · p95 ${c.p95Ms} ms</small></span>${badge(c.passed, "Passed", "Failed")}</div>`).join("")}` : ""}${result.error ? `<p>${escapeHtml(result.error)}</p>` : ""}`;
+    if (result.status === "RUNNING")
+      diagnosticTimer = setTimeout(() => loadDiagnostics(), 1500);
+    else if (button) button.disabled = false;
+  } catch (error) {
+    box.textContent = error.message;
+    if (button) button.disabled = false;
+  }
+}
+document.addEventListener("submit", (event) => {
+  if (event.target.id !== "diagnosticForm") return;
+  event.preventDefault();
+  loadDiagnostics(Number(new FormData(event.target).get("attempts")));
 });

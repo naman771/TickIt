@@ -12,6 +12,7 @@ public class EventDto {
   private int capacity;
   private int availableTickets;
   private int perOrderLimit;
+  private Integer minimumAge;
   private String currency;
   private String category;
   private String timezone;

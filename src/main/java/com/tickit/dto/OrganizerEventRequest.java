@@ -28,7 +28,8 @@ public record OrganizerEventRequest(
     @NotNull @Size(max = 12) List<@Valid PoolInput> pools,
     LocalDateTime salesStart,
     LocalDateTime salesEnd,
-    @Min(1) @Max(10) int perOrderLimit) {
+    @Min(1) @Max(3) int perOrderLimit,
+    @Min(1) @Max(120) Integer minimumAge) {
   public record SeatInput(
       @NotBlank @Size(max = 40) String section,
       @NotBlank @Size(max = 10) String row,

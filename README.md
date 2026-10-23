@@ -50,7 +50,7 @@ Prefer running Java locally? See [local development and configuration](docs/DEVE
 
 ## Verification
 
-**61 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
+**66 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
 
 An additional opt-in live Neon test verifies database reads and private storage upload, listing, download integrity, anonymous denial and deletion. CI runs the local suite against PostgreSQL and Redis, validates Docker Compose, and builds the container. [Validation details →](docs/VALIDATION.md)
 

@@ -28,6 +28,8 @@ import org.springframework.web.bind.annotation.*;
 public class BookingController {
 
   private final BookingService bookingService;
+  private final com.tickit.repository.EventRepository events;
+  private final com.tickit.repository.AdmissionHoldRepository admissionHolds;
   private final com.tickit.service.CurrentUserService currentUser;
   private final com.tickit.config.AuthSettings authSettings;
   private final SeatHoldService seatHoldService;
@@ -40,12 +42,14 @@ public class BookingController {
    * Step 1 of Booking flow: Acquire temporary short-TTL hold on a seat. Protected by Redis Token
    * Bucket rate limiter.
    */
+  @org.springframework.transaction.annotation.Transactional
   @PostMapping("/holds")
   public ResponseEntity<?> holdSeat(@Valid @RequestBody BookingRequest request) {
     Long eventId = request.getEventId();
     Long seatId = request.getSeatId();
     Long userId = currentUser.resolve(request.getUserId()).getId();
 
+    events.lockById(eventId).orElseThrow(() -> new IllegalArgumentException("Event not found"));
     Seat seat =
         seatRepository
             .findById(seatId)
@@ -58,6 +62,7 @@ public class BookingController {
           HttpStatus.NOT_FOUND, "Event not found");
     }
     com.tickit.service.EventSales.requireOpen(seat.getVenue().getEvent());
+    com.tickit.service.EventSales.requireAge(seat.getVenue().getEvent(), request.getAttendeeAge());
     if (!userRepository.existsById(userId)) throw new IllegalArgumentException("User not found");
 
     // 1. Check if already permanently booked in database
@@ -66,7 +71,14 @@ public class BookingController {
     }
 
     // 2. Try to acquire Redis hold
-    boolean acquired = seatHoldService.acquireHold(eventId, seatId, userId);
+    int booked = (int) bookingRepository.countByUserIdAndEventId(userId, eventId);
+    int limit = Math.min(3, seat.getVenue().getEvent().getPerOrderLimit());
+    boolean acquired =
+        seatHoldService.acquireHold(
+            eventId,
+            seatId,
+            userId,
+            limit - booked - (int) admissionHolds.activeForUser(userId, eventId));
     if (!acquired) {
       return ResponseEntity.status(HttpStatus.CONFLICT)
           .body(
@@ -74,7 +86,8 @@ public class BookingController {
                   "status",
                   409,
                   "error",
-                  "Seat is currently held by another user. Please choose another seat or wait."));
+                  "Seat unavailable or your per-event reservation limit has been reached (maximum 3"
+                      + " seats)."));
     }
 
     // 3. Broadcast real-time hold update to all connected WebSocket clients

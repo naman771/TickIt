@@ -79,7 +79,7 @@ class OrganizerFlowTest {
     d.put("stageLabel", "Main stage");
     d.put("stageX", 400);
     d.put("stageY", 20);
-    d.put("perOrderLimit", 10);
+    d.put("perOrderLimit", 3);
     d.put(
         "seats",
         mode.equals("GENERAL")
@@ -303,7 +303,7 @@ class OrganizerFlowTest {
               () -> {
                 start.await();
                 try {
-                  admission.hold(event, tier.get(n % 2).getId(), 1);
+                  admission.hold(event, tier.get(n % 2).getId(), 1, null);
                   accepted.incrementAndGet();
                 } catch (ResponseStatusException e) {
                   assertThat(e.getStatusCode().value()).isEqualTo(409);
@@ -323,7 +323,7 @@ class OrganizerFlowTest {
         event);
     assertThat(((Number) admission.availability(event).get(0).get("available")).intValue())
         .isEqualTo(3);
-    var held = admission.hold(event, tier.get(0).getId(), 3);
+    var held = admission.hold(event, tier.get(0).getId(), 3, null);
     admission.release((UUID) held.get("id"));
     assertThat(((Number) admission.availability(event).get(0).get("available")).intValue())
         .isEqualTo(3);
@@ -339,10 +339,11 @@ class OrganizerFlowTest {
             .findByPoolIdOrderById(pools.findByEventIdOrderById(event).get(0).getId())
             .get(0)
             .getId();
-    assertThatThrownBy(() -> admission.hold(event, tier, 3))
+    assertThatThrownBy(() -> admission.hold(event, tier, 3, null))
         .hasMessageContaining("per-order limit");
-    var held = admission.hold(event, tier, 2);
-    assertThatThrownBy(() -> admission.hold(event, tier, 1)).hasMessageContaining("per-account");
+    var held = admission.hold(event, tier, 2, null);
+    assertThatThrownBy(() -> admission.hold(event, tier, 1, null))
+        .hasMessageContaining("per-account");
     when(current.resolve(any())).thenReturn(other);
     assertThatThrownBy(() -> admission.release((UUID) held.get("id"))).hasMessageContaining("403");
     when(current.resolve(any())).thenReturn(owner);
@@ -354,7 +355,7 @@ class OrganizerFlowTest {
             .findByPoolIdOrderById(pools.findByEventIdOrderById(future).get(0).getId())
             .get(0)
             .getId();
-    assertThatThrownBy(() -> admission.hold(future, futureType, 1))
+    assertThatThrownBy(() -> admission.hold(future, futureType, 1, null))
         .hasMessageContaining("not opened");
   }
 
@@ -372,5 +373,61 @@ class OrganizerFlowTest {
                 .header("Origin", "https://untrusted.invalid")
                 .header("Access-Control-Request-Method", "POST"))
         .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void optionalAgePolicyPersistsAndAppliesToSeatAndStandingHolds() throws Exception {
+    var p = payload("MIXED");
+    p.put("minimumAge", 18);
+    var published = publish(p);
+    Long event = id(published);
+    mvc.perform(get("/api/events/" + event)).andExpect(jsonPath("$.minimumAge").value(18));
+    Long seat = seats.findByVenueEventId(event).get(0).getId();
+    var request = new LinkedHashMap<String, Object>();
+    request.put("eventId", event);
+    request.put("seatId", seat);
+    mvc.perform(
+            post("/api/holds")
+                .with(jwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(request)))
+        .andExpect(status().isBadRequest());
+    request.put("attendeeAge", 17);
+    mvc.perform(
+            post("/api/holds")
+                .with(jwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(request)))
+        .andExpect(status().isBadRequest());
+    request.put("attendeeAge", 18);
+    mvc.perform(
+            post("/api/holds")
+                .with(jwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(request)))
+        .andExpect(status().isOk());
+    Long tier =
+        types
+            .findByPoolIdOrderById(pools.findByEventIdOrderById(event).get(0).getId())
+            .get(0)
+            .getId();
+    assertThatThrownBy(() -> admission.hold(event, tier, 1, 17))
+        .hasMessageContaining("minimum age");
+    var hold = admission.hold(event, tier, 2, 18);
+    assertThatThrownBy(() -> admission.hold(event, tier, 1, 18))
+        .hasMessageContaining("per-account");
+    admission.release(java.util.UUID.fromString(hold.get("id").toString()));
+  }
+
+  @Test
+  void organizerCannotConfigureInvalidAge() throws Exception {
+    var p = payload("SEATED");
+    p.put("minimumAge", 121);
+    mvc.perform(
+            post("/api/organizer/events")
+                .with(jwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(p)))
+        .andExpect(status().isBadRequest());
   }
 }

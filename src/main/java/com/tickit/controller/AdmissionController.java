@@ -13,7 +13,10 @@ import org.springframework.web.bind.annotation.*;
 public class AdmissionController {
   private final AdmissionService service;
 
-  public record HoldRequest(@NotNull Long ticketTypeId, @Min(1) @Max(10) int quantity) {}
+  public record HoldRequest(
+      @NotNull Long ticketTypeId,
+      @Min(1) @Max(10) int quantity,
+      @Min(0) @Max(120) Integer attendeeAge) {}
 
   @GetMapping("/{id}/admission")
   public List<Map<String, Object>> availability(@PathVariable Long id) {
@@ -22,7 +25,7 @@ public class AdmissionController {
 
   @PostMapping("/{id}/admission-holds")
   public Map<String, Object> hold(@PathVariable Long id, @Valid @RequestBody HoldRequest input) {
-    return service.hold(id, input.ticketTypeId(), input.quantity());
+    return service.hold(id, input.ticketTypeId(), input.quantity(), input.attendeeAge());
   }
 
   @DeleteMapping("/admission-holds/{id}")
