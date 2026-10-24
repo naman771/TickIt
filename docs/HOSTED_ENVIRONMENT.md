@@ -14,7 +14,7 @@ Clerk's development instance supplies real Google/email authentication. Both pub
 
 Razorpay **Test Mode** is connected. Live keys are blocked. Organizer-created events populate the catalog; synthetic catalog fixtures are disabled. Automatic full refunds use durable jobs and retain their original request keys. The outstanding test refund has a provider/account balance restriction, not a recorded successful refund. See [refund operations](REFUNDS.md).
 
-Transactional email remains disabled until the owner configures a verified sender and validates transport acceptance. The queue is durable and visible to developers. Render Free blocks common SMTP ports; the release supports a Brevo HTTPS adapter. No actual delivery is claimed merely because an outbox job exists. See [notifications](NOTIFICATIONS.md).
+Brevo HTTPS transactional email is configured after verified sender setup, provider acceptance and owner-confirmed receipt of a hosted booking email. Customer delivery is explicitly authorized; historical held messages require review. The queue is durable and visible to developers. Render Free blocks common SMTP ports; the release supports a Brevo HTTPS adapter. A SENT job means provider acceptance, with inbox receipt confirmed for the acceptance messages only. See [notifications](NOTIFICATIONS.md).
 
 ## Release scope
 

@@ -12,17 +12,19 @@ async function setup(page){
   return errors;
 }
 function admission(id,n,status='VALID'){return {id,orderId:order,eventId:901,label:'Floor · Regular',ordinal:n,status,checkedInAt:null};}
-async function customer(page,status='VALID',delay=0){
-  const errors=await setup(page);let qrRequests=0;
+async function customer(page,status='VALID',delay=0,options={}){
+  const errors=await setup(page);let qrRequests=0,removals=0,dismissed=false;
+  const eventInfo={...event,...options.event};
   await page.route('**/api/**',async r=>{
     const p=new URL(r.request().url()).pathname;
     if(p==='/api/events'||p==='/api/bookings/me')return r.fulfill({json:[]});
-    if(p==='/api/payments/orders/me')return r.fulfill({json:[{id:order,eventId:901,status:'CONFIRMED',amount:150000,currency:'INR',event,items:[{label:'Floor · Regular',quantity:3,unitAmount:50000}],tickets:ids.map((id,n)=>admission(id,n+1,status))}]});
+    if(p==='/api/bookings/events/901/dashboard' && r.request().method()==='DELETE'){removals++;if(options.removeDelay)await new Promise(resolve=>setTimeout(resolve,options.removeDelay));if(options.removeFails)return r.fulfill({status:503,json:{error:'Removal unavailable. Please try again.'}});dismissed=true;return r.fulfill({json:{removed:true}});}
+    if(p==='/api/payments/orders/me')return r.fulfill({json:dismissed?[]:[{id:order,eventId:901,status:'CONFIRMED',amount:150000,currency:'INR',event:eventInfo,items:[{label:'Floor · Regular',quantity:3,unitAmount:50000}],tickets:ids.map((id,n)=>admission(id,n+1,status))}]});
     if(p.endsWith('/qr')){qrRequests++;if(delay)await new Promise(resolve=>setTimeout(resolve,delay));return r.fulfill({contentType:'image/png',body:png});}
     if(p.startsWith('/api/tickets/'))return r.fulfill({json:{ticket:admission(p.split('/')[3],1,status),event,credential:status==='VALID'?'tickit:v1:'+'A'.repeat(43):null}});
     return r.fulfill({status:404,json:{error:'Unknown fixture route'}});
   });
-  await page.goto('/#tickets');return {errors,qrRequests:()=>qrRequests};
+  await page.goto('/#tickets');return {errors,qrRequests:()=>qrRequests,removals:()=>removals};
 }
 test('standing admissions have separate QR tickets, downloads and printable tickets',async({page})=>{
   const f=await customer(page);
@@ -130,4 +132,45 @@ test('developer can review failed notifications without mutating bookings',async
   await page.getByRole('button',{name:'Retry failed message'}).click();
   await expect(page.getByRole('button',{name:'Retry failed message'})).toHaveCount(0);
   await expect(page.locator('#notificationQueue')).toContainText('RETRY');expect(reviewed).toBe(true);expect(errors).toEqual([]);
+});
+
+
+test('ticket cards use the event poster even when the event is absent from discovery',async({page})=>{
+  const f=await customer(page,'INACTIVE',0,{event:{status:'DELETED',imageUrl:'/images/eras.jpg'}});
+  await expect(page.locator('.ticket-card')).toHaveCount(3);
+  for(const img of await page.locator('.ticket-card img').all())await expect(img).toHaveAttribute('src','/images/eras.jpg');
+  expect(f.errors).toEqual([]);
+});
+test('missing and broken event artwork use a neutral placeholder',async({page})=>{
+  const f=await customer(page);
+  await expect(page.locator('.ticket-card img').first()).toHaveAttribute('src','/images/event-placeholder.svg');
+  await page.evaluate(()=>{document.querySelector('.ticket-card img').src='/missing-event-poster.png';});
+  await expect(page.locator('.ticket-card img').first()).toHaveAttribute('src','/images/event-placeholder.svg');
+  await expect(page.locator('.ticket-card img').first()).toHaveAttribute('alt','Event artwork unavailable');
+  expect(f.errors).toEqual([]);
+});
+test('cancelled event removal needs confirmation, removes every admission and persists on reload',async({page})=>{
+  const f=await customer(page,'INACTIVE',0,{event:{status:'CANCELLED'}});
+  page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'Remove event tickets'}).first().click();
+  expect(f.removals()).toBe(0);await expect(page.locator('.ticket-card')).toHaveCount(3);
+  page.once('dialog',dialog=>{expect(dialog.message()).toContain('pending refund continues');return dialog.accept();});
+  await page.getByRole('button',{name:'Remove event tickets'}).first().click();
+  await expect(page.locator('.ticket-card')).toHaveCount(0);await page.reload();
+  await expect(page.getByRole('heading',{name:'Something to look forward to.'})).toBeVisible();expect(f.removals()).toBe(1);expect(f.errors).toEqual([]);
+});
+test('active event tickets have no removal action',async({page})=>{
+  await customer(page);await expect(page.getByRole('button',{name:'Remove event tickets'})).toHaveCount(0);
+});
+test('failed removal keeps cancelled tickets visible and allows a retry',async({page})=>{
+  const f=await customer(page,'INACTIVE',0,{event:{status:'CANCELLED'},removeFails:true});
+  page.on('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Remove event tickets'}).first().click();
+  await expect(page.getByText('Removal unavailable. Please try again.')).toBeVisible();
+  await expect(page.locator('.ticket-card')).toHaveCount(3);await expect(page.getByRole('button',{name:'Remove event tickets'}).first()).toBeEnabled();expect(f.removals()).toBe(1);expect(f.errors).toEqual([]);
+});
+test('signing out during ticket removal cannot restore the previous account dashboard',async({page})=>{
+  const f=await customer(page,'INACTIVE',0,{event:{status:'DELETED'},removeDelay:300});
+  page.on('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Remove event tickets'}).first().click();
+  await expect.poll(()=>f.removals()).toBe(1);await page.evaluate(()=>TickItAuth.signOut());
+  await expect(page.getByRole('button',{name:'Sign in',exact:true}).last()).toBeVisible();
+  await page.waitForTimeout(400);await expect(page.locator('.ticket-card')).toHaveCount(0);expect(f.errors).toEqual([]);
 });

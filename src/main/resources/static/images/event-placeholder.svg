@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400">
+  <rect width="300" height="400" fill="#edf0e9"/>
+  <g fill="none" stroke="#8b9b8c" stroke-width="2">
+    <rect x="105" y="150" width="90" height="72" rx="6"/>
+    <path d="m108 210 27-28 20 20 15-14 22 22"/>
+    <circle cx="170" cy="171" r="7"/>
+  </g>
+  <text x="150" y="251" text-anchor="middle" fill="#536854" font-family="sans-serif" font-size="12">Event artwork unavailable</text>
+</svg>

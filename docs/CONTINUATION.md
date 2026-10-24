@@ -2,6 +2,14 @@
 
 This document records the ticket lifecycle implementation and remaining operational work. Publication is authorized. GitHub CI and Render deployment status determine which revision is live; local test results alone do not confirm a hosted rollout.
 
+## Latest customer dashboard and email checkpoint
+
+Cancelled/deleted event tickets can now be removed from the current customer's My tickets view with confirmation. V13 stores a per-account event visibility preference; bookings, admissions, refund jobs and private order receipts remain intact. Event summaries now include their actual image URL; unavailable artwork uses a neutral placeholder.
+
+Verification: **185 backend tests passed**, three opt-in external-provider tests skipped (188 total, zero failures/errors); **86 desktop/mobile browser checks passed**. Four removal/artwork acceptance cases passed on a disposable Neon branch with V13; production CLI context was restored and the branch deleted. The packaged build passed.
+
+Brevo API acceptance and a real hosted booking confirmation were both received in the owner's inbox. The owner explicitly approved transactional emails to all customer addresses after testing. The recipient restriction is removed for this release; eight historical jobs remain held for individual review. Free-plan quota, sender-address rewriting and free-host sleep remain practical limits. Provider delivery/bounce tracking is still pending. Earlier checkpoints below describe their own rollout state; verify this release's live revision through CI and hosting checks.
+
 ## Implemented in this checkpoint
 
 1. **Refund exception handling:** distinguish permanent provider HTTP rejections from transient errors; preserve the original full amount/body/idempotency key. Permanent failures enter `REVIEW`. Developer tools inspect provider state without creating a refund, reconcile a matching refund, and explicitly retry a reviewed failure with a required reason and durable audit row. Processed refunds cannot regress.

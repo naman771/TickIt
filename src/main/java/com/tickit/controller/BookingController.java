@@ -29,6 +29,7 @@ public class BookingController {
 
   private final BookingService bookingService;
   private final com.tickit.service.EventSnapshots eventSnapshots;
+  private final com.tickit.service.TicketDashboard ticketDashboard;
   private final com.tickit.repository.EventRepository events;
   private final com.tickit.repository.AdmissionHoldRepository admissionHolds;
   private final com.tickit.service.CurrentUserService currentUser;
@@ -184,9 +185,11 @@ public class BookingController {
   }
 
   private ResponseEntity<List<BookingResponse>> bookingsForUser(Long userId) {
+    var hidden = ticketDashboard.hiddenEvents(userId);
     List<Booking> bookings = bookingRepository.findByUserId(userId);
     List<BookingResponse> responses =
         bookings.stream()
+            .filter(b -> !hidden.contains(b.getEvent().getId()))
             .map(
                 b ->
                     BookingResponse.builder()
@@ -201,5 +204,11 @@ public class BookingController {
             .collect(Collectors.toList());
 
     return ResponseEntity.ok(responses);
+  }
+
+  @DeleteMapping("/bookings/events/{eventId}/dashboard")
+  public Map<String, Boolean> removeEventTickets(@PathVariable long eventId) {
+    ticketDashboard.remove(currentUser.resolve(null).getId(), eventId);
+    return Map.of("removed", true);
   }
 }

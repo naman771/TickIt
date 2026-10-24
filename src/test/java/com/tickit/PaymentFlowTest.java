@@ -689,8 +689,107 @@ class PaymentFlowTest {
   }
 
   @Test
+  void removingCancelledEventTicketsIsPrivateIdempotentAndPreservesRefunds() throws Exception {
+    organizerOwnsFixture();
+    var order = create(request(selected(1), null, 0));
+    payment(order, "captured");
+    var confirmed = verify(order);
+    String ticket = confirmed.get("tickets").get(0).get("id").asString();
+    bookings.saveAndFlush(
+        Booking.builder().event(event).seat(rows.get(1)).user(other).status("CONFIRMED").build());
+    mvc.perform(
+            post("/api/organizer/events/" + event.getId() + "/cancel")
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    json.writeValueAsString(
+                        Map.of(
+                            "version",
+                            events.findById(event.getId()).orElseThrow().getLayoutVersion(),
+                            "reason",
+                            "Venue cancellation"))))
+        .andExpect(status().isOk());
+    String refundBefore =
+        jdbc.queryForObject(
+            "SELECT row_to_json(r)::text FROM refund_job r WHERE order_id=?",
+            String.class,
+            UUID.fromString(order.get("id").asString()));
+    String url = "/api/bookings/events/" + event.getId() + "/dashboard";
+    for (int n = 0; n < 2; n++)
+      mvc.perform(delete(url).with(as(user)))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.removed").value(true));
+    mvc.perform(get("/api/bookings/me").with(as(user))).andExpect(jsonPath("$.length()").value(0));
+    mvc.perform(get("/api/payments/orders/me").with(as(user)))
+        .andExpect(jsonPath("$.length()").value(0));
+    mvc.perform(get("/api/bookings/me").with(as(other))).andExpect(jsonPath("$.length()").value(1));
+    mvc.perform(get("/api/payments/orders/" + order.get("id").asString()).with(as(user)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("CONFIRMED"));
+    mvc.perform(get("/api/tickets/" + ticket).with(as(user)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.ticket.status").value("INACTIVE"));
+    assertEquals(
+        2,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM booking WHERE event_id=?", Integer.class, event.getId()));
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM customer_hidden_event WHERE event_id=?",
+            Integer.class,
+            event.getId()));
+    assertEquals(
+        refundBefore,
+        jdbc.queryForObject(
+            "SELECT row_to_json(r)::text FROM refund_job r WHERE order_id=?",
+            String.class,
+            UUID.fromString(order.get("id").asString())));
+  }
+
+  @Test
+  void ticketRemovalRejectsActiveEventsOtherAccountsAndAnonymousCallers() throws Exception {
+    var order = create(request(selected(1), null, 0));
+    payment(order, "captured");
+    verify(order);
+    String url = "/api/bookings/events/" + event.getId() + "/dashboard";
+    mvc.perform(delete(url)).andExpect(status().isUnauthorized());
+    mvc.perform(delete(url).with(as(other))).andExpect(status().isNotFound());
+    mvc.perform(delete(url).with(as(user))).andExpect(status().isConflict());
+    jdbc.update("UPDATE event SET publication_status='CANCELLED' WHERE id=?", event.getId());
+    mvc.perform(delete(url).with(as(other))).andExpect(status().isNotFound());
+    assertEquals(
+        0,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM customer_hidden_event WHERE event_id=?",
+            Integer.class,
+            event.getId()));
+    mvc.perform(get("/api/payments/orders/me").with(as(user)))
+        .andExpect(jsonPath("$.length()").value(1));
+  }
+
+  @Test
+  void deletedEventLegacyTicketsCanBeRemovedWithoutDeletingTheirBooking() throws Exception {
+    var legacy =
+        bookings.saveAndFlush(
+            Booking.builder()
+                .event(event)
+                .seat(rows.getFirst())
+                .user(user)
+                .status("CONFIRMED")
+                .build());
+    jdbc.update("UPDATE event SET publication_status='DELETED' WHERE id=?", event.getId());
+    mvc.perform(delete("/api/bookings/events/" + event.getId() + "/dashboard").with(as(user)))
+        .andExpect(status().isOk());
+    mvc.perform(get("/api/bookings/me").with(as(user))).andExpect(jsonPath("$.length()").value(0));
+    assertTrue(bookings.existsById(legacy.getId()));
+  }
+
+  @Test
   void cancelledOrDeletedPaidEventsKeepReceiptAndBookedSeatHistory() throws Exception {
     organizerOwnsFixture();
+    event.setImageUrl("https://example.com/event-poster.jpg");
+    events.saveAndFlush(event);
     var order = create(request(selected(1), null, 0));
     payment(order, "captured");
     verify(order);
@@ -708,7 +807,8 @@ class PaymentFlowTest {
         .andExpect(status().isOk());
     mvc.perform(get("/api/bookings/me").with(as(user)))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].event.status").value("CANCELLED"));
+        .andExpect(jsonPath("$[0].event.status").value("CANCELLED"))
+        .andExpect(jsonPath("$[0].event.imageUrl").value("https://example.com/event-poster.jpg"));
     mvc.perform(
             delete("/api/organizer/events/" + event.getId())
                 .with(as(user))
@@ -724,7 +824,8 @@ class PaymentFlowTest {
     mvc.perform(get("/api/payments/orders/me").with(as(user)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].status").value("CONFIRMED"))
-        .andExpect(jsonPath("$[0].event.status").value("DELETED"));
+        .andExpect(jsonPath("$[0].event.status").value("DELETED"))
+        .andExpect(jsonPath("$[0].event.imageUrl").value("https://example.com/event-poster.jpg"));
     assertEquals(1, bookings.countByUserIdAndEventId(user.getId(), event.getId()));
     mvc.perform(get("/api/events/" + event.getId())).andExpect(status().isNotFound());
   }

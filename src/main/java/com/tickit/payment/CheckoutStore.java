@@ -101,7 +101,9 @@ public class CheckoutStore {
 
   public List<Order> history(long user) {
     return jdbc.query(
-        "SELECT * FROM checkout_order WHERE user_id=? ORDER BY created_at DESC LIMIT 100",
+        "SELECT o.* FROM checkout_order o WHERE user_id=? AND NOT EXISTS"
+            + " (SELECT 1 FROM customer_hidden_event h WHERE h.user_id=o.user_id"
+            + " AND h.event_id=o.event_id) ORDER BY created_at DESC LIMIT 100",
         this::map,
         user);
   }

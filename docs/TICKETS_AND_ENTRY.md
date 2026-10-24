@@ -21,3 +21,11 @@ Entry is online and single-use. It opens six hours before the current start and 
 | `DELETE /api/organizer/events/{id}/staff/{userId}` | Owner |
 
 Outcomes: `ADMITTED`, `ALREADY_USED`, `INVALID`, `INACTIVE`, `TOO_EARLY`, `ENDED`. A network error is never an entry confirmation. There is no offline admission or manual bypass.
+
+## Removing cancelled event tickets
+
+My tickets uses the event's own poster, including after removal from discovery. Missing or unavailable artwork uses a neutral placeholder.
+
+For cancelled or deleted events, **Remove event tickets** asks for confirmation and hides all of that event's admissions and checkout cards from the current account. The preference persists across devices. Other purchasers' dashboards are unaffected. Active-event tickets cannot be removed this way.
+
+`DELETE /api/bookings/events/{eventId}/dashboard` requires the signed-in purchaser and returns `{"removed":true}`. Repeated removal is idempotent. It records a customer visibility preference; booking rows, admission credentials, paid-order receipts, scan history, notification jobs and refund processing are preserved. An owned order remains readable through its private order URL for support and refund checks.

@@ -410,6 +410,39 @@ function refundMessage(refund) {
     return "Your refund needs support follow-up. Keep your order reference; do not make another payment for this order.";
   return "Your full refund is being handled automatically. You do not need to submit a refund request.";
 }
+const ticketPlaceholder = "/images/event-placeholder.svg";
+function ticketPoster(e) {
+  return `<img data-event-poster src="${esc(e.imageUrl?.trim() || ticketPlaceholder)}" alt="${esc(e.imageUrl ? `${e.name} event poster` : `No poster for ${e.name}`)}" loading="lazy">`;
+}
+function removeTicketButton(e) {
+  return ["CANCELLED", "DELETED"].includes(e?.status)
+    ? `<button class="quiet-button ticket-remove" data-remove-event-tickets="${Number(e.id)}" data-event-name="${esc(e.name)}">Remove event tickets</button>` : "";
+}
+async function removeEventTickets(button) {
+  const sequence = routeSequence, user = state.user?.id;
+  if (!user || button.disabled) return;
+  if (!window.confirm(`Remove all tickets for ${button.dataset.eventName} from My tickets? Booking and refund records are retained, and any pending refund continues.`)) return;
+  button.disabled = true;
+  try {
+    const token = await TickItAuth.token();
+    if (state.user?.id !== user) return;
+    const res = await fetch(`/api/bookings/events/${encodeURIComponent(button.dataset.removeEventTickets)}/dashboard`, {method:"DELETE", headers:{Authorization:`Bearer ${token}`}});
+    const data = await res.json();
+    if (sequence !== routeSequence || state.user?.id !== user) return;
+    if (!res.ok) throw new Error(data.error || "Tickets could not be removed. Please try again.");
+    await renderTickets(++routeSequence);
+    notify("Event tickets removed from My tickets.");
+  } catch(error) {
+    if (sequence === routeSequence && state.user?.id === user) notify(error.message);
+  } finally { if (button.isConnected) button.disabled = false; }
+}
+app.addEventListener("error", event => {
+  const img = event.target;
+  if (img instanceof HTMLImageElement && img.hasAttribute("data-event-poster") && img.getAttribute("src") !== ticketPlaceholder) {
+    img.src = ticketPlaceholder;
+    img.alt = "Event artwork unavailable";
+  }
+}, true);
 async function renderTickets(sequence) {
   state.view = "tickets";
   setNav("tickets");
@@ -424,7 +457,7 @@ async function renderTickets(sequence) {
     const orders = await api("/api/payments/orders/me");
     const outstanding = orders.filter((o) => o.status !== "CONFIRMED");
     const checkoutHistory = outstanding.length
-      ? `<section class="tickets-list" aria-label="Checkout history">${outstanding.map((o) => `<article class="ticket-card"><div class="ticket-body"><div class="ticket-top"><span>${esc(o.id.slice(0, 8))}</span><b class="status-badge">${esc(refundLabel(o.refund) || o.status.replaceAll("_", " "))}</b></div><h2>${esc(o.event?.name || state.events.find((e) => e.id === o.eventId)?.name || "Event checkout")}</h2><p>${money(o.amount / 100, o.currency)} · ${o.refund ? refundMessage(o.refund) : o.status === "REVIEW_REQUIRED" ? "Payment needs review; no ticket confirmed." : "Check this order before attempting another payment."}</p><button class="secondary-button" data-action="resume-checkout" data-order-id="${esc(o.id)}">View checkout</button></div></article>`).join("")}</section>`
+      ? `<section class="tickets-list" aria-label="Checkout history">${outstanding.map((o) => `<article class="ticket-card"><div class="ticket-body"><div class="ticket-top"><span>${esc(o.id.slice(0, 8))}</span><b class="status-badge">${esc(refundLabel(o.refund) || o.status.replaceAll("_", " "))}</b></div><h2>${esc(o.event?.name || state.events.find((e) => e.id === o.eventId)?.name || "Event checkout")}</h2><p>${money(o.amount / 100, o.currency)} · ${o.refund ? refundMessage(o.refund) : o.status === "REVIEW_REQUIRED" ? "Payment needs review; no ticket confirmed." : "Check this order before attempting another payment."}</p><button class="secondary-button" data-action="resume-checkout" data-order-id="${esc(o.id)}">View checkout</button>${removeTicketButton(o.event)}</div></article>`).join("")}</section>`
       : "";
     const confirmed = orders.filter((o) => o.status === "CONFIRMED");
     const legacy = tickets.filter(
@@ -462,14 +495,14 @@ async function renderTickets(sequence) {
             .map((t) => {
               const e = t.event || state.events.find((e) => e.id === t.eventId);
               return e
-                ? `<article class="ticket-card"><img src="${esc(photo(e))}" alt=""><div class="ticket-body"><div class="ticket-top"><span>TK-${String(t.bookingId).padStart(6, "0")}</span><b class="status-badge">${refundLabel(t.refund) || (["CANCELLED", "DELETED"].includes(e.status) ? "CANCELLED · REFUND PENDING" : e.scheduleChanged ? "RESCHEDULED" : t.status === "USED" ? "CHECKED IN" : t.status === "INACTIVE" ? "INACTIVE" : "CONFIRMED")}</b></div><h2>${esc(shortName(e))} · ${esc(tour(e))}</h2>${e.changeNote ? `<p>${esc(e.changeNote)}</p>` : ""}<div class="meta-line"><span>${icon("calendar")}${esc(day(e.startInstant || e.startTime, e.timezone))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div>${t.ticketId ? `<button class="secondary-button" data-ticket-id="${esc(t.ticketId)}">View ticket</button>` : ""}</div><div class="ticket-stub"><span>YOUR SEAT</span><strong>${esc(t.seatLabel)}</strong><small>Reserved admission</small></div></article>`
+                ? `<article class="ticket-card">${ticketPoster(e)}<div class="ticket-body"><div class="ticket-top"><span>TK-${String(t.bookingId).padStart(6, "0")}</span><b class="status-badge">${refundLabel(t.refund) || (["CANCELLED", "DELETED"].includes(e.status) ? "CANCELLED · REFUND PENDING" : e.scheduleChanged ? "RESCHEDULED" : t.status === "USED" ? "CHECKED IN" : t.status === "INACTIVE" ? "INACTIVE" : "CONFIRMED")}</b></div><h2>${esc(shortName(e))} · ${esc(tour(e))}</h2>${e.changeNote ? `<p>${esc(e.changeNote)}</p>` : ""}<div class="meta-line"><span>${icon("calendar")}${esc(day(e.startInstant || e.startTime, e.timezone))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div>${t.ticketId ? `<button class="secondary-button" data-ticket-id="${esc(t.ticketId)}">View ticket</button>` : ""}${removeTicketButton(e)}</div><div class="ticket-stub"><span>YOUR SEAT</span><strong>${esc(t.seatLabel)}</strong><small>Reserved admission</small></div></article>`
                 : "";
             })
             .join("")
         : `<div class="empty-state"><h2>Something to look forward to.</h2><p>Your confirmed reservations will appear here.</p><a class="hero-link" href="#events">Find your next experience ${icon("arrow")}</a></div>`
     }</div></div>`;
   } catch (err) {
-    renderError(err);
+    if (sequence === routeSequence) renderError(err);
   }
 }
 function renderError(err) {
@@ -607,6 +640,8 @@ function connect() {
   }
 }
 app.addEventListener("click", (event) => {
+  const remove = event.target.closest("[data-remove-event-tickets]");
+  if (remove) { removeEventTickets(remove); return; }
   const category = event.target.closest("[data-category]");
   if (category) {
     state.category = category.dataset.category;

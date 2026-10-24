@@ -1,6 +1,6 @@
 # Current local validation — 24 October 2026
 
-`DB_USER=naman mvn -B verify`: **185 tests, 0 failures, 0 errors, 3 optional external-provider skips**; executable JAR build passed. **182 backend tests passed.** Chrome browser suite: **74 desktop/mobile checks passed**. Organizer static build passed. These are local build results; actual mobile camera, email transport acceptance and container/live checks require separate validation. See [continuation](CONTINUATION.md).
+`DB_USER=naman mvn -B verify`: **188 tests, 0 failures, 0 errors, 3 optional external-provider skips**; executable JAR build passed. **185 backend tests passed.** Chrome browser suite: **86 desktop/mobile checks passed**. Organizer static build passed. These are local build results; actual mobile camera, email transport acceptance and container/live checks require separate validation. See [continuation](CONTINUATION.md).
 
 The entries below are historical validation records and their implementation statuses are not the current release inventory.
 

@@ -23,7 +23,8 @@ public class EventSnapshots {
       boolean scheduleChanged,
       String venueName,
       String venueLocation,
-      String city) {}
+      String city,
+      String imageUrl) {}
 
   public Summary get(long id) {
     return jdbc.queryForObject(
@@ -45,7 +46,8 @@ public class EventSnapshots {
               r.getTimestamp("schedule_changed_at") != null,
               r.getString("venue_name"),
               r.getString("venue_location"),
-              r.getString("city"));
+              r.getString("city"),
+              r.getString("image_url"));
         },
         id);
   }

@@ -14,7 +14,7 @@ The original delivery phases remain the structure for further work. The current 
 | 8. Expired holds | Complete | Bounded Redis expiry-index worker and live status notifications. |
 | 9. API and website | MVP complete | Discovery, search/filter, seat selection, confirmation, ticket history. |
 | 10. Authentication | Connected; production instance pending | Clerk signup/Google sign-in integration, signed-session verification, account isolation, separate developer authorization. |
-| 11. Testing | Partial | 182 local regression tests, real WebSocket transport, a separately passing Neon storage test, and 74 browser checks. Testcontainers and broad k6 capacity testing remain. |
+| 11. Testing | Partial | 185 local regression tests, real WebSocket transport, a separately passing Neon storage test, and 86 browser checks. Testcontainers and broad k6 capacity testing remain. |
 | 12. CI/CD | Partial | GitHub Actions backend/browser tests and container build; connected free Render deployments. Optional registry publication remains. |
 | 13. Deployment | Hosted interim environment | Separate Render customer/organizer sites, private Redis and Neon. Free-host limits and production identity/operations work remain; Kubernetes is optional. |
 
