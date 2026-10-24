@@ -2,6 +2,18 @@
 
 This document records the ticket lifecycle implementation and remaining operational work. Publication is authorized. GitHub CI and Render deployment status determine which revision is live; local test results alone do not confirm a hosted rollout.
 
+## Current verified state — 24 October 2026
+
+Verified before continuing: local `main`, GitHub `main`, successful [GitHub CI run 40073015952](https://github.com/naman771/TickIt/actions/runs/40073015952), and both live Render deployments agree on `07e2b28e38849a8b9255fc83b1258270be3482d5`. The working tree was clean. Deployed customer/organizer assets match that revision; all ten public health, identity, asset and anonymous-rejection checks pass. Organizer CORS passes. V9–V13 are applied, ticket credential lengths are valid, and the historical paid-order/booking snapshot remains preserved.
+
+Private hosted configuration confirms Razorpay test keys, Brevo HTTPS delivery enabled and the recipient restriction removed. All eight historical held notification jobs remain held. Refund state remains one `REVIEW` and two `PROCESSED`; this verification does not retry or resolve the provider balance exception. Render backend and cache plans remain `free`; the organizer remains the existing static site. No provider mutation, plan change, live key or queue release was performed.
+
+Continued with the [backup/restore exercise](BACKUP_RESTORE.md): a consistent, read-only hosted PostgreSQL 16 snapshot restored successfully into disposable local PostgreSQL 18. All **22 public tables / 321 rows** matched whole-row fingerprints. The archive SHA-256 was `35dd66e5c82ba54a0292e66d88585e0c26be4b245fe10aa6819973cb56d0b672`. The temporary database and archive were removed; no application or outbound worker ran against the copy. This proves one logical restore, not retained backups, provider-state recovery or a launch-capacity guarantee.
+
+The reusable tool rejects pooled Neon URLs, insecure source connections and existing database targets. Safety tests cover connection redirection, a real local round trip, restore failure cleanup and corrupted-row detection. Hosted verification logs are in `target/customer-ticket-release-verification.json` and `target/backup-restore-drill.log` (gitignored). Runtime application code is unchanged by this operational checkpoint. Later Git commits containing the tool/docs require their own CI/deployment check; the exact live revision above records the initial verification.
+
+Next independent work: monitoring/alerts and bounded pipeline load/failure testing; define retained encrypted backup storage under the zero-budget constraint. Physical-device admission acceptance still needs the owner. Production identity, delivery/bounce tracking and the provider refund exception remain open. Keep all resources free and Razorpay test-only. Earlier sections below are historical checkpoints, including their then-current pending work.
+
 ## Latest customer dashboard and email checkpoint
 
 Cancelled/deleted event tickets can now be removed from the current customer's My tickets view with confirmation. V13 stores a per-account event visibility preference; bookings, admissions, refund jobs and private order receipts remain intact. Event summaries now include their actual image URL; unavailable artwork uses a neutral placeholder.
@@ -50,7 +62,7 @@ Render Free blocks SMTP ports 25/465/587. Use `EMAIL_TRANSPORT=brevo` for the im
 
 A provider acceptance response is not proof of inbox delivery. Delivery/bounce webhooks are not implemented. Audited failed-message retry and held-message release are implemented. SMTP/HTTP acknowledgement loss can cause duplicate delivery; the outbox prevents duplicate job creation, not mathematically exactly-once external email.
 
-## Remaining operational work
+## Historical operational checklist (see current verified state above)
 
 1. Confirm the deployed revision and release checks; avoid starting a second implementation of these features.
 2. Boundary acceptance tests now cover wrong-event QR for an owner of both events, oversized/corrupt images, the staff revoke/scan race, rescheduled entry windows, delayed operations navigation and camera permission completing after sign-out. Full physical-device acceptance remains separate.

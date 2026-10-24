@@ -10,7 +10,7 @@ The original delivery phases remain the structure for further work. The current 
 | 4. Booking transaction | Complete | Hold validation, unique booking constraint, `@Version`, post-commit side effects. |
 | 5. Live updates | MVP complete | STOMP seat updates and reconciliation. Shared broker needed for scaling. |
 | 6. Rate limiting | MVP complete | Atomic per-IP token bucket; verified session-subject bucket. |
-| 7. Email | Implemented locally; activation pending | Durable outbox, leased retries, SMTP/HTTPS adapters; real sender and delivery verification pending. |
+| 7. Email | Hosted delivery enabled; event tracking pending | Durable outbox, leased retries, Brevo HTTPS provider acceptance and hosted booking/inbox receipt verified; held backlog requires review. |
 | 8. Expired holds | Complete | Bounded Redis expiry-index worker and live status notifications. |
 | 9. API and website | MVP complete | Discovery, search/filter, seat selection, confirmation, ticket history. |
 | 10. Authentication | Connected; production instance pending | Clerk signup/Google sign-in integration, signed-session verification, account isolation, separate developer authorization. |
@@ -22,7 +22,7 @@ Before paid public launch: production identity configuration, real-provider paym
 
 ## Organizer catalog update
 
-Organizer-owned drafts, event-specific seating, shared-capacity standing ticket types and validated publishing are implemented. The customer frontend renders custom layouts and GA quantity selection. Razorpay test checkout and confirmed GA order lines are connected on the hosted environment. Published-seat bulk editing, event cancellation/archive and audited rescheduling are implemented, with payment history preserved. Automatic full refunds now handle cancelled/deleted events and captured payments without issued tickets, with durable retries and visible provider outcomes. QR issuance and online entry check-in are implemented in the ticket lifecycle release. Activating real notification delivery, public poster uploads and reusable verified named-venue libraries remain future work.
+Organizer-owned drafts, event-specific seating, shared-capacity standing ticket types and validated publishing are implemented. The customer frontend renders custom layouts and GA quantity selection. Razorpay test checkout and confirmed GA order lines are connected on the hosted environment. Published-seat bulk editing, event cancellation/archive and audited rescheduling are implemented, with payment history preserved. Automatic full refunds now handle cancelled/deleted events and captured payments without issued tickets, with durable retries and visible provider outcomes. QR issuance and online entry check-in are implemented in the ticket lifecycle release. Brevo delivery is enabled after hosted acceptance; provider delivery/bounce tracking, public poster uploads and reusable verified named-venue libraries remain future work.
 
 ## Framework migration
 
@@ -30,14 +30,14 @@ The codebase now uses Spring Boot 4.0.9 / Framework 7.0.10, Jackson 3, Hibernate
 
 Payment implementation and account prerequisites are documented in [PAYMENTS.md](PAYMENTS.md). Live payment acceptance remains disabled.
 
-## Next delivery stages
+## Delivery stages and remaining work
 
-1. QR tickets: one unguessable credential per admission, issued only after confirmed payment; customer display/download and organizer/staff scanning. Check-in must be atomic and single-use, reject other events and invalidate cancelled/refunded tickets.
-2. Reliable notifications: a durable email outbox for tickets, receipts, refunds, cancellations and rescheduling, with retries and delivery status.
-3. Organizer operations: booking/refund reports, guest lists, scoped entry-staff accounts and check-in reporting. Multi-organizer payouts/settlement remain separate from the current single merchant account.
+1. QR tickets are deployed. Physical-device camera/admission acceptance remains separate from automated tests and a phone reading a downloaded QR.
+2. Durable notifications and hosted sending are deployed. Provider delivery/bounce events and review of the held historical backlog remain.
+3. Organizer reports and scoped entry staff are deployed. Multi-organizer payouts/settlement remain separate from the current single merchant account.
 4. Public media and venue tools: safe poster uploads, reusable verified venue layouts and richer published standing-tier management.
-5. Launch readiness: production identity/OAuth configuration, live merchant activation, payment/refund end-to-end acceptance, monitoring, tested backups/restoration and broader load/failure tests. Existing free hosting remains the interim environment.
+5. Launch readiness: production identity/OAuth configuration, payment/refund acceptance, monitoring, retained backups and broader load/failure tests. See the [isolated restore exercise](BACKUP_RESTORE.md). Existing free hosting and Razorpay test mode remain; live merchant activation is blocked under the current constraints.
 
 ## 24 October ticket lifecycle release
 
-QR issuance, private downloads/print, online single-use check-in, event staff access, organizer reports, durable notifications and refund operator recovery are implemented. The previous ticket lifecycle release is deployed; the entry/email activation checkpoint has separate validation. See [continuation status](CONTINUATION.md) for evidence, external blockers and the exact next steps; older future-work lists above reflect the earlier hosted release.
+QR issuance, private downloads/print, online single-use check-in, event staff access, organizer reports, durable notifications and refund operator recovery are deployed. On 24 October, GitHub CI and both Render deployments were verified at `07e2b28`, including the customer ticket visibility/artwork update. See [continuation status](CONTINUATION.md) for evidence, external blockers and current next steps.

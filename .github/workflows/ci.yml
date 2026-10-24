@@ -54,6 +54,8 @@ jobs:
       - run: node --check src/main/resources/static/developer/portal.js
       - run: node --check src/main/resources/static/organizer/organizer.js
       - run: node scripts/build-organizer.mjs
+      - name: Verify backup drill safety boundaries
+        run: python3 -m unittest discover -s tests/operations -v
       - run: bash -n scripts/rate_limit_probe.sh
       - run: docker compose config --quiet
       - run: docker build -t tickit:ci .
