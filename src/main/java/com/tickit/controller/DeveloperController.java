@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.*;
 public class DeveloperController {
   private final AuthSettings settings;
   private final com.tickit.payment.PaymentSettings payments;
+  private final com.tickit.payment.RefundService refundService;
+  private final com.tickit.notification.EmailSettings email;
   private final org.springframework.jdbc.core.JdbcTemplate jdbc;
   private final DeveloperAccess access;
   private final AssetStorageService storage;
@@ -54,6 +56,69 @@ public class DeveloperController {
             + " r.order_id,r.status,r.amount,r.currency,r.reason,r.provider_refund_id,r.failures,r.last_error,r.created_at,r.updated_at,o.event_id"
             + " FROM refund_job r JOIN checkout_order o ON o.id=r.order_id ORDER BY r.created_at"
             + " DESC LIMIT 100");
+  }
+
+  public record RefundRetry(
+      @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 500)
+          String reason) {}
+
+  @PostMapping("/payments/refunds/{id}/inspect")
+  public Map<String, Object> inspectRefund(@PathVariable java.util.UUID id) {
+    access.requireDeveloper();
+    return refundService.inspect(id);
+  }
+
+  @PostMapping("/payments/refunds/{id}/retry")
+  public com.tickit.payment.RefundService.Summary retryRefund(
+      @PathVariable java.util.UUID id, @jakarta.validation.Valid @RequestBody RefundRetry input) {
+    access.requireDeveloper();
+    refundService.retry(
+        id,
+        input.reason(),
+        org.springframework.security.core.context.SecurityContextHolder.getContext()
+            .getAuthentication()
+            .getName());
+    return refundService.summary(id);
+  }
+
+  @GetMapping("/readiness")
+  public Map<String, Object> readiness() {
+    access.requireDeveloper();
+    return Map.of(
+        "checkedAt",
+        Instant.now().toString(),
+        "authentication",
+        settings.isClerk()
+            ? (settings.getIssuer().contains(".clerk.accounts.dev")
+                ? "DEVELOPMENT_INSTANCE"
+                : "CONFIGURED_REQUIRES_ACCEPTANCE")
+            : "NOT_CONNECTED",
+        "payments",
+        payments.isEnabled() ? "TEST_ONLY" : "DISABLED",
+        "email",
+        Map.of("enabled", email.isEnabled(), "transport", email.getTransport()),
+        "refundsRequiringAttention",
+        jdbc.queryForObject(
+            "SELECT count(*) FROM refund_job WHERE status IN ('FAILED','REVIEW')", Long.class),
+        "failedNotifications",
+        jdbc.queryForObject(
+            "SELECT count(*) FROM notification_outbox WHERE status='FAILED'", Long.class),
+        "publicLaunchApproved",
+        false);
+  }
+
+  @GetMapping("/notifications")
+  public Map<String, Object> notifications() {
+    access.requireDeveloper();
+    return Map.of(
+        "deliveryEnabled",
+        emailEnabled,
+        "counts",
+        jdbc.queryForList("SELECT status,count(*) total FROM notification_outbox GROUP BY status"),
+        "recent",
+        jdbc.queryForList(
+            "SELECT id,event_id,kind,status,attempts,created_at,sent_at,last_error FROM"
+                + " notification_outbox ORDER BY created_at DESC LIMIT 100"));
   }
 
   @GetMapping("/overview")

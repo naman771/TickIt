@@ -1,51 +1,35 @@
 # Hosted environment
 
-- Customer website: https://tickit-mpy2.onrender.com
-- Organizer website: https://tickit-organizers.onrender.com
-- Restricted developer workspace: https://tickit-mpy2.onrender.com/developer/
-- Health endpoint: https://tickit-mpy2.onrender.com/actuator/health
+- [Customer website](https://tickit-mpy2.onrender.com)
+- [Organizer website](https://tickit-organizers.onrender.com)
+- [Entry workspace](https://tickit-organizers.onrender.com/entry.html)
+- [Restricted developer workspace](https://tickit-mpy2.onrender.com/developer/)
+- [Health endpoint](https://tickit-mpy2.onrender.com/actuator/health)
 
 ## Connected infrastructure
 
-The Spring Boot Docker service and private Key Value instance run on Render Free in Frankfurt. PostgreSQL 16 and the private `assets` bucket run on the existing Neon Free project in the same region. No custom domain, paid instance, persistent Render disk, or paid plan upgrade was provisioned.
+The Spring Boot Docker service and private Redis-compatible store use the existing Render Free resources in Frankfurt. PostgreSQL 16 and the private `assets` bucket use Neon Free in the same region. No paid upgrade, domain purchase, Render disk or additional paid worker is authorized. Render Free can sleep when idle; cold starts and suspended background processing can delay tickets, notifications and refund reconciliation. Confirmed business records belong in PostgreSQL; the free Redis store is not durable.
 
-Service configuration is stored in Render environment variables. The database uses the pooled `DATABASE_URL`; Flyway uses `DATABASE_URL_UNPOOLED`. Private Redis is supplied through `SPRING_DATA_REDIS_URL`. Native Java S3 storage uses branch-scoped AWS-standard environment variables. Credentials are never committed.
+Clerk's development instance supplies real Google/email authentication. Both public frontend origins are permitted explicitly. Production identity/OAuth setup remains separate. Developer authorization uses an independent subject allowlist; organizer or customer signup does not grant developer access.
 
-The deployment uses the existing Clerk development instance and test-prefixed keys. Google/email authentication is real provider-backed authentication, but this is an interim hosted environment, not a completed production identity deployment. Clerk production domain/OAuth configuration remains separate. The allowed JWT application origin is the exact public Render URL. Developer access remains limited to the configured provider subjects.
+Razorpay **Test Mode** is connected. Live keys are blocked. Organizer-created events populate the catalog; synthetic catalog fixtures are disabled. Automatic full refunds use durable jobs and retain their original request keys. The outstanding test refund has a provider/account balance restriction, not a recorded successful refund. See [refund operations](REFUNDS.md).
 
-## Operational limits
+Transactional email remains disabled until the owner configures a verified sender and validates transport acceptance. The queue is durable and visible to developers. Render Free blocks common SMTP ports; the release supports a Brevo HTTPS adapter. No actual delivery is claimed merely because an outbox job exists. See [notifications](NOTIFICATIONS.md).
 
-Render Free sleeps when idle; cold starts on this Spring Boot application can take several minutes. Its Redis-compatible store is non-durable. Neon Free has compute and storage quotas. No paid upgrades are authorized.
+## Release scope
 
-The catalog is populated by organizers publishing their own event drafts. The previous local sample catalog was not migrated, and no test events were inserted into production. Paid checkout and transactional email remain disabled. Existing users can sign in with the same Clerk account; the backend provisions the corresponding local account record on first use against Neon.
+The ticket lifecycle release adds private per-admission QR tickets, downloadable/printable tickets, online single-use check-in, event-scoped staff access, guest/financial reports and notification jobs. See [ticket operations](TICKETS_AND_ENTRY.md), [validation](VALIDATION.md) and [remaining work](CONTINUATION.md).
 
-## Updating the app
+The organizer frontend is an independent static site built with `scripts/build-organizer.mjs`; it calls the same secured Java API through exact-origin CORS. The event editor links to **Bookings & entry**. Staff can use `/entry.html` without enrolling as an organizer, but must be explicitly assigned to an event. The developer frontend currently uses the backend's `/developer/` path rather than a separate public subdomain.
 
-The service builds the repository's `main` branch from its Dockerfile. Documentation-only changes (`docs/**` and `README.md`) are excluded from rebuilds to preserve the free build allowance. Auto-deploy is configured for passing repository checks; confirm the GitHub connection in Render if future commits do not trigger a build. Apply provider environment changes directly in Render and redeploy the existing build when code is unchanged. Never replace the working Clerk environment with the Blueprint's initial catalog-only defaults.
+## Deployment and verification
 
-Before announcing an update, verify health, the public identity configuration, the sign-in UI, and anonymous developer API rejection. Authenticated developer storage operations were tested against real Neon services locally; public browser operations require signing in on the hosted origin.
+The backend builds `main` with its Dockerfile; the organizer builds the static artifact. Deploy the same verified commit to both existing resources, preserving the current private environment and free plans. Flyway applies additive schema migrations on startup. Never replace connected Clerk/Neon/payment configuration with the Blueprint's initial catalog-only defaults.
 
-## Deployment verification
+After both deployments are live:
 
-Verified on the public origin after the final connected-auth rollout:
+```bash
+node scripts/verify-release.mjs https://tickit-mpy2.onrender.com https://tickit-organizers.onrender.com
+```
 
-| Check | Result |
-|---|---|
-| Actuator health | HTTP 200, `UP` |
-| Public identity configuration | `authProvider: clerk`, checkout disabled |
-| Database-backed events | HTTP 200, empty catalog |
-| Developer frontend | HTTP 200 |
-| Anonymous developer overview and asset APIs | HTTP 401 |
-| Clerk sign-in modal | Loaded, Google option present, no browser errors |
-| Private provider configuration | Matches the tested local Neon/Clerk configuration |
-| Render web and Redis plans | Free |
-
-The browser check waited for Clerk to finish initialization before clicking sign-in. Completing Google OAuth as a real user and authenticated storage actions on the public origin remain user-session checks; no account session was impersonated for verification.
-
-## Organizer deployment
-
-The organizer frontend is a separate Render static site at `tickit-organizers.onrender.com`, built from `scripts/build-organizer.mjs`. It uses the same backend through an exact-origin CORS allowlist. Both customer and organizer origins are authorized for Clerk session tokens; accounts do not gain developer permissions by registering as an organizer. The database owns event drafts, publication state, layout snapshots and shared admission pools through V3. Frontend-only separation is not used as an authorization boundary.
-
-Both organizer and customer interfaces remain on free hosting. The organizer static site does not need a second Java/Redis/Postgres deployment. Real paid checkout, production identity/domain configuration, organizer cancellations and edits to published events remain future work.
-
-The organizer rollout was verified on its public URL: the real Clerk modal includes Google sign-in, cross-origin API access works, organizer profile requires authentication (401), untrusted origins receive 403, the new admission route returns 404 for an unknown event, and backend health is UP. The final application revision passed GitHub CI. Browser verification did not impersonate an account or insert events into the production catalog.
+This read-only check verifies public assets, health, identity configuration and anonymous API rejection. Release validation additionally compares deployed assets to the commit, verifies migrations and preserved financial history, and checks organizer CORS. Authenticated account acceptance and physical-camera checks are separate; no user session is impersonated. GitHub CI and Render's exact commit/status are the deployment record.

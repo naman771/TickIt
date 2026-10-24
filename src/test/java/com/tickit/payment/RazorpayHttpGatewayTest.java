@@ -82,6 +82,21 @@ class RazorpayHttpGatewayTest {
   }
 
   @Test
+  void separatesPermanentProviderRejectionsFromTransientFailuresWithoutRetainingBodies()
+      throws Exception {
+    for (int status : List.of(400, 401, 403, 404, 422, 408, 409, 429, 500, 503)) {
+      respond(status, "sensitive provider payload fixture-secret");
+      var ex =
+          assertThrows(
+              ProviderRequestException.class,
+              () -> gateway.createRefund("pay_fixture", 100, UUID.randomUUID()));
+      assertEquals(status, ex.providerStatus());
+      assertEquals(Set.of(408, 409, 429, 500, 503).contains(status), ex.retryable());
+      assertFalse(ex.getMessage().contains("fixture-secret"));
+    }
+  }
+
+  @Test
   void invalidReferenceCannotChangeRequestOriginOrPath() {
     assertThrows(ResponseStatusException.class, () -> gateway.payment("https://another.example/"));
     verifyNoInteractions(client);

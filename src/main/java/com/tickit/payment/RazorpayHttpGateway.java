@@ -76,6 +76,14 @@ public class RazorpayHttpGateway implements RazorpayGateway {
     return asRefund(call("GET", "refunds/" + refundId, null));
   }
 
+  public List<Refund> refunds(String paymentId) {
+    return call("GET", "payments/" + id(paymentId) + "/refunds?count=100", null)
+        .path("items")
+        .valueStream()
+        .map(this::asRefund)
+        .toList();
+  }
+
   private Refund asRefund(JsonNode n) {
     return new Refund(
         n.path("id").asText(),
@@ -135,8 +143,10 @@ public class RazorpayHttpGateway implements RazorpayGateway {
       else request.GET();
       var response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() < 200 || response.statusCode() > 299)
-        throw new IllegalStateException();
+        throw new ProviderRequestException(response.statusCode());
       return json.readTree(response.body());
+    } catch (ProviderRequestException ex) {
+      throw ex;
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
       throw unavailable();

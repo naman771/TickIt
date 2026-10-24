@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class OrganizerService {
   private final CurrentUserService currentUser;
+  private final com.tickit.notification.NotificationOutbox notifications;
   private final BookingRepository bookings;
   private final SeatHoldService seatHolds;
   private final AdmissionHoldRepository admissionHolds;
@@ -350,6 +351,8 @@ public class OrganizerService {
         next,
         e.getTimezone(),
         timezone);
+    Long change = jdbc.queryForObject("SELECT id FROM event_change WHERE event_id=? ORDER BY id DESC LIMIT 1", Long.class,e.getId());
+    notifications.eventChange(change);
   }
 
   private void notifyAfterCommit(Long id) {

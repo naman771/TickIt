@@ -440,7 +440,10 @@ async function renderTickets(sequence) {
       tickets.length,
       ...legacy,
       ...confirmed.flatMap((o) =>
-        o.items.map((i, n) => ({
+        o.tickets?.length ? o.tickets.map(t => ({
+          bookingId: t.id.slice(0,8), ticketId: t.id, eventId: o.eventId, event: o.event,
+          refund: o.refund, seatLabel: `${t.label} · Guest ${t.ordinal}`, status: t.status,
+        })) : o.items.map((i, n) => ({
           bookingId: `${o.id.slice(0, 8)}-${n + 1}`,
           eventId: o.eventId,
           event: o.event,
@@ -459,7 +462,7 @@ async function renderTickets(sequence) {
             .map((t) => {
               const e = t.event || state.events.find((e) => e.id === t.eventId);
               return e
-                ? `<article class="ticket-card"><img src="${esc(photo(e))}" alt=""><div class="ticket-body"><div class="ticket-top"><span>TK-${String(t.bookingId).padStart(6, "0")}</span><b class="status-badge">${refundLabel(t.refund) || (["CANCELLED", "DELETED"].includes(e.status) ? "CANCELLED · REFUND PENDING" : e.scheduleChanged ? "RESCHEDULED" : "CONFIRMED")}</b></div><h2>${esc(shortName(e))} · ${esc(tour(e))}</h2>${e.changeNote ? `<p>${esc(e.changeNote)}</p>` : ""}<div class="meta-line"><span>${icon("calendar")}${esc(day(e.startInstant || e.startTime, e.timezone))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div></div><div class="ticket-stub"><span>YOUR SEAT</span><strong>${esc(t.seatLabel)}</strong><small>Reserved admission</small></div></article>`
+                ? `<article class="ticket-card"><img src="${esc(photo(e))}" alt=""><div class="ticket-body"><div class="ticket-top"><span>TK-${String(t.bookingId).padStart(6, "0")}</span><b class="status-badge">${refundLabel(t.refund) || (["CANCELLED", "DELETED"].includes(e.status) ? "CANCELLED · REFUND PENDING" : e.scheduleChanged ? "RESCHEDULED" : t.status === "USED" ? "CHECKED IN" : t.status === "INACTIVE" ? "INACTIVE" : "CONFIRMED")}</b></div><h2>${esc(shortName(e))} · ${esc(tour(e))}</h2>${e.changeNote ? `<p>${esc(e.changeNote)}</p>` : ""}<div class="meta-line"><span>${icon("calendar")}${esc(day(e.startInstant || e.startTime, e.timezone))}</span><span>${icon("pin")}${esc(e.venueName)}</span></div>${t.ticketId ? `<button class="secondary-button" data-ticket-id="${esc(t.ticketId)}">View ticket</button>` : ""}</div><div class="ticket-stub"><span>YOUR SEAT</span><strong>${esc(t.seatLabel)}</strong><small>Reserved admission</small></div></article>`
                 : "";
             })
             .join("")

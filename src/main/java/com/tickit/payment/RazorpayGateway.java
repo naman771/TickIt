@@ -20,6 +20,8 @@ public interface RazorpayGateway {
 
   Refund refund(String id);
 
+  List<Refund> refunds(String paymentId);
+
   Order create(UUID receipt, long amount, String currency);
 
   Order order(String id);

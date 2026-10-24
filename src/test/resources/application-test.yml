@@ -17,3 +17,7 @@ app:
     enabled: true
   auth:
     mode: test
+  tickets:
+    recovery-enabled: false
+  notifications:
+    scheduled-enabled: false

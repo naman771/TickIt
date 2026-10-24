@@ -14,6 +14,7 @@ public class RefundService {
   private final JdbcTemplate jdbc;
   private final RazorpayGateway gateway;
   private final PaymentSettings settings;
+  private final org.springframework.transaction.support.TransactionTemplate tx;
 
   record Job(
       UUID orderId,
@@ -68,6 +69,82 @@ public class RefundService {
         .orElse(null);
   }
 
+  /** Read provider state and reconcile matching refunds; never creates a new refund. */
+  public Map<String, Object> inspect(UUID id) {
+    if (!settings.isEnabled())
+      throw new org.springframework.web.server.ResponseStatusException(
+          org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "Payment provider is disabled");
+    var rows = jdbc.query("SELECT * FROM refund_job WHERE order_id=?", this::map, id);
+    if (rows.isEmpty())
+      throw new org.springframework.web.server.ResponseStatusException(
+          org.springframework.http.HttpStatus.NOT_FOUND, "Refund not found");
+    var job = rows.getFirst();
+    var payment = gateway.payment(job.paymentId());
+    var providerOrder =
+        jdbc.queryForObject(
+            "SELECT provider_order_id FROM checkout_order WHERE id=?", String.class, id);
+    if (payment == null
+        || !job.paymentId().equals(payment.id())
+        || !Objects.equals(providerOrder, payment.orderId())
+        || job.amount() != payment.amount()
+        || !job.currency().equals(payment.currency()))
+      throw new org.springframework.web.server.ResponseStatusException(
+          org.springframework.http.HttpStatus.CONFLICT, "Provider payment identity mismatch");
+    var providerRefunds = gateway.refunds(job.paymentId());
+    for (var refund : providerRefunds)
+      if (id.toString().equals(refund.receipt())) apply(job, refund, false);
+    if ("refunded".equals(payment.status()) && payment.amountRefunded() == job.amount())
+      jdbc.update(
+          "UPDATE refund_job SET status='PROCESSED',last_error='Full refund verified with"
+              + " provider',lease_token=NULL,lease_until=NULL,updated_at=clock_timestamp() WHERE"
+              + " order_id=? AND status<>'PROCESSED'",
+          id);
+    return Map.of(
+        "providerPaymentStatus",
+        payment.status(),
+        "amountRefunded",
+        payment.amountRefunded(),
+        "providerRefundCount",
+        providerRefunds.size(),
+        "refund",
+        summary(id));
+  }
+
+  /**
+   * Explicit, audited operator recovery after the external cause has been resolved. Same body/key.
+   */
+  public void retry(UUID id, String reason, String actor) {
+    tx.executeWithoutResult(
+        s -> {
+          var orders = jdbc.queryForList("SELECT event_id FROM checkout_order WHERE id=?", id);
+          if (orders.isEmpty())
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.NOT_FOUND, "Refund not found");
+          jdbc.queryForObject(
+              "SELECT id FROM event WHERE id=? FOR UPDATE",
+              Long.class,
+              orders.getFirst().get("event_id"));
+          int changed =
+              jdbc.update(
+                  "UPDATE refund_job SET"
+                      + " status='RETRY',failures=0,next_attempt_at=clock_timestamp(),"
+                      + " last_error='Operator requested retry after"
+                      + " review',lease_token=NULL,lease_until=NULL,updated_at=clock_timestamp()"
+                      + " WHERE order_id=? AND status IN ('REVIEW','FAILED') AND (lease_until IS"
+                      + " NULL OR lease_until<clock_timestamp())",
+                  id);
+          if (changed != 1)
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT,
+                "Only an unclaimed review or failed refund can be retried");
+          jdbc.update(
+              "INSERT INTO refund_operation(order_id,actor,reason) VALUES(?,?,?)",
+              id,
+              actor,
+              reason.trim());
+        });
+  }
+
   public boolean processOne() {
     if (!settings.isEnabled()) return false;
     UUID lease = UUID.randomUUID();
@@ -110,13 +187,20 @@ public class RefundService {
       }
       apply(job, refund, true);
     } catch (Exception ex) {
+      if (ex instanceof ProviderRequestException provider && !provider.retryable()) {
+        stop(job, "REVIEW", provider.operationalMessage());
+        return true;
+      }
       // An uncertain create always retries the identical body/key. Never generate a new refund key.
       jdbc.update(
           "UPDATE refund_job SET failures=failures+1,status=CASE WHEN failures>=11 THEN 'FAILED'"
               + " ELSE 'RETRY' END,"
               + " next_attempt_at=clock_timestamp()+make_interval(secs=>LEAST(3600,15*power(2,LEAST(failures,8)))::int),"
-              + " lease_token=NULL,lease_until=NULL,updated_at=clock_timestamp(),last_error='Provider"
-              + " request deferred' WHERE order_id=? AND lease_token=? AND status<>'PROCESSED'",
+              + " lease_token=NULL,lease_until=NULL,updated_at=clock_timestamp(),last_error=? WHERE"
+              + " order_id=? AND lease_token=? AND status<>'PROCESSED'",
+          ex instanceof ProviderRequestException provider
+              ? provider.operationalMessage()
+              : "Provider request deferred",
           job.orderId(),
           job.lease());
     }

@@ -1,7 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const base = "http://127.0.0.1:4180";
 const auth =
-  'window.TickItAuth={user:{id:101,name:"Fixture account"},config:{checkoutEnabled:false},token:async()=>"fixture",onChange:(fn)=>{window.fixtureAuthChange=fn},init:async()=>{},open:()=>{},signOut:async()=>{}};';
+  'window.TickItAuth={user:{id:101,name:"Fixture account"},config:{checkoutEnabled:false},token:async()=>"fixture",onChange:(fn)=>{(window.fixtureAuthListeners??=[]).push(fn);window.fixtureAuthChange=(user)=>window.fixtureAuthListeners.forEach(f=>f(user))},init:async()=>{},open:()=>{},signOut:async()=>{}};';
 const common = {
   name: "Independent Sessions",
   slug: "independent-sessions-mumbai",

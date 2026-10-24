@@ -1,3 +1,9 @@
+# Current local validation — 24 October 2026
+
+`DB_USER=naman mvn -B verify`: **174 tests, 0 failures, 0 errors, 2 optional external-provider skips**; executable JAR build passed. **172 backend tests passed.** Chrome browser suite: **68 desktop/mobile checks passed**. Organizer static build passed. These are local build results; actual mobile camera, email transport acceptance and container/live checks require separate validation. See [continuation](CONTINUATION.md).
+
+The entries below are historical validation records and their implementation statuses are not the current release inventory.
+
 # Validation
 
 Validated on **23 October 2026** with Java 21, PostgreSQL 18.6, and local Redis. Tests use a separate `tickit_test` database and Redis database 15.
@@ -58,3 +64,7 @@ The V4 migration plus all 17 organizer/diagnostic integration tests also passed 
 ### CI browser runtime
 
 GitHub Actions uses the stable Chrome supplied by the pinned Ubuntu 24.04 runner image through `PLAYWRIGHT_BROWSER_CHANNEL=chrome`. This avoids downloading another browser and its OS packages during every run. The same 54 desktop/mobile checks still run, alongside backend and container verification. CI has a 20-minute job timeout. Local users can opt into the same installed-browser channel; without that setting Playwright retains its default browser behavior.
+
+## Pre-publication cloud verification
+
+On 24 October, V9 and V10 applied successfully to a disposable Neon branch. Nine critical ticket/check-in, staff authorization, outbox and refund recovery tests passed with zero failures/errors. The production CLI context was restored and the disposable branch removed. Runtime advisory scanning checked 178 coordinates with zero flagged packages at scan time. Physical-camera and real email delivery acceptance remain separate.

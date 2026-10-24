@@ -29,6 +29,11 @@
     </properties>
 
     <dependencies>
+        <!-- QR generation and uploaded/camera-frame decoding; runs entirely on our server. -->
+        <dependency>
+            <groupId>com.google.zxing</groupId><artifactId>core</artifactId><version>3.5.4</version>
+        </dependency>
+
         <!-- Neon S3-compatible private asset storage (Java SDK v2). -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>

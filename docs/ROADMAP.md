@@ -10,11 +10,11 @@ The original delivery phases remain the structure for further work. The current 
 | 4. Booking transaction | Complete | Hold validation, unique booking constraint, `@Version`, post-commit side effects. |
 | 5. Live updates | MVP complete | STOMP seat updates and reconciliation. Shared broker needed for scaling. |
 | 6. Rate limiting | MVP complete | Atomic per-IP token bucket; verified session-subject bucket. |
-| 7. Email | Optional | Async SMTP implementation. Durable outbox and retries pending. |
+| 7. Email | Implemented locally; activation pending | Durable outbox, leased retries, SMTP/HTTPS adapters; real sender and delivery verification pending. |
 | 8. Expired holds | Complete | Bounded Redis expiry-index worker and live status notifications. |
 | 9. API and website | MVP complete | Discovery, search/filter, seat selection, confirmation, ticket history. |
 | 10. Authentication | Connected; production instance pending | Clerk signup/Google sign-in integration, signed-session verification, account isolation, separate developer authorization. |
-| 11. Testing | Partial | 150 local regression tests, real WebSocket transport, a separately passing Neon storage test, and 54 browser checks. Testcontainers and broad k6 capacity testing remain. |
+| 11. Testing | Partial | 172 local regression tests, real WebSocket transport, a separately passing Neon storage test, and 68 browser checks. Testcontainers and broad k6 capacity testing remain. |
 | 12. CI/CD | Partial | GitHub Actions backend/browser tests and container build; connected free Render deployments. Optional registry publication remains. |
 | 13. Deployment | Hosted interim environment | Separate Render customer/organizer sites, private Redis and Neon. Free-host limits and production identity/operations work remain; Kubernetes is optional. |
 
@@ -22,7 +22,7 @@ Before paid public launch: production identity configuration, real-provider paym
 
 ## Organizer catalog update
 
-Organizer-owned drafts, event-specific seating, shared-capacity standing ticket types and validated publishing are implemented. The customer frontend renders custom layouts and GA quantity selection. Razorpay test checkout and confirmed GA order lines are connected on the hosted environment. Published-seat bulk editing, event cancellation/archive and audited rescheduling are implemented, with payment history preserved. Automatic full refunds now handle cancelled/deleted events and captured payments without issued tickets, with durable retries and visible provider outcomes. QR ticket issuance, entry check-in, notification delivery, public poster uploads and reusable verified named-venue libraries remain future work.
+Organizer-owned drafts, event-specific seating, shared-capacity standing ticket types and validated publishing are implemented. The customer frontend renders custom layouts and GA quantity selection. Razorpay test checkout and confirmed GA order lines are connected on the hosted environment. Published-seat bulk editing, event cancellation/archive and audited rescheduling are implemented, with payment history preserved. Automatic full refunds now handle cancelled/deleted events and captured payments without issued tickets, with durable retries and visible provider outcomes. QR issuance and online entry check-in are implemented in the ticket lifecycle release. Activating real notification delivery, public poster uploads and reusable verified named-venue libraries remain future work.
 
 ## Framework migration
 
@@ -37,3 +37,7 @@ Payment implementation and account prerequisites are documented in [PAYMENTS.md]
 3. Organizer operations: booking/refund reports, guest lists, scoped entry-staff accounts and check-in reporting. Multi-organizer payouts/settlement remain separate from the current single merchant account.
 4. Public media and venue tools: safe poster uploads, reusable verified venue layouts and richer published standing-tier management.
 5. Launch readiness: production identity/OAuth configuration, live merchant activation, payment/refund end-to-end acceptance, monitoring, tested backups/restoration and broader load/failure tests. Existing free hosting remains the interim environment.
+
+## 24 October ticket lifecycle release
+
+QR issuance, private downloads/print, online single-use check-in, event staff access, organizer reports, durable notifications and refund operator recovery are implemented. Publication is authorized; deployment is verified separately. See [continuation status](CONTINUATION.md) for evidence, external blockers and the exact next steps; older future-work lists above reflect the earlier hosted release.

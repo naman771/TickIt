@@ -1721,3 +1721,5 @@ img {
     padding-bottom: 5px;
   }
 }
+
+.admission-dialog{border:1px solid #d7dfd6;border-radius:8px;padding:28px;max-width:520px;width:calc(100% - 32px);max-height:90dvh;overflow:auto;color:#183e32;background:#fbfcf8}.admission-dialog::backdrop{background:#142b26aa}.ticket-close{display:block;margin-left:auto}.admission-content h2{font-size:27px;margin:18px 0}.admission-content p{line-height:1.6}.admission-qr{display:block;width:min(100%,300px);height:auto;margin:22px auto;background:white}.admission-actions{display:flex;flex-wrap:wrap;gap:10px}.ticket-reference{font-size:11px;overflow-wrap:anywhere;color:#64776a}.ticket-unavailable{padding:18px;background:#f1e9d7}.ticket-body>.secondary-button{margin-top:16px}

@@ -54,6 +54,9 @@ spring:
     properties:
       mail:
         smtp:
+          connectiontimeout: 5000
+          timeout: 10000
+          writetimeout: 10000
           auth: true
           starttls:
             enable: true
@@ -88,14 +91,16 @@ app:
     capacity: 20                  # Max tokens per bucket
     refill-rate: 5                # Tokens added per second
   email:
-    from: ${EMAIL_FROM:noreply@tickit.live}
+    from: ${EMAIL_FROM:}
+    transport: ${EMAIL_TRANSPORT:smtp}
+    brevo-api-key: ${BREVO_API_KEY:}
     enabled: ${EMAIL_ENABLED:false}
 
 # ── Actuator ─────────────────────────────────────────────
 management:
   health:
     mail:
-      enabled: ${EMAIL_ENABLED:false}
+      enabled: ${SMTP_HEALTH_ENABLED:false}
   endpoints:
     web:
       exposure:

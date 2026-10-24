@@ -110,20 +110,24 @@ function render(section) {
     },
     email: {
       title: "Transactional delivery",
-      provider: "Resend SMTP",
+      provider: "Transactional email",
       ready: overview.integrations.email,
-      copy: "Email delivery requires a verified sending domain and SMTP credentials. Reliable paid-ticket delivery also needs a persistent outbox and retry worker.",
+      copy: "Email delivery requires an approved sender and transport credentials. A persistent outbox and bounded retry worker retain booking, event-change and refund messages until delivery is enabled.",
       items: [
-        "Verify the sending domain and configure DNS records.",
-        "Keep SMTP credentials in server-side environment variables.",
+        "Verify the sending identity with your provider; domain authentication improves delivery.",
+        "Render Free blocks SMTP ports; use the supported Brevo HTTPS transport. Keep credentials server-side.",
         "Send ticket notifications after the paid booking commits.",
       ],
-      href: "https://resend.com/docs/send-with-smtp",
-      label: "Resend SMTP documentation",
+      href: "https://developers.brevo.com/docs/send-a-transactional-email",
+      label: "Email transport documentation",
     },
   };
   const d = details[section];
   content.innerHTML = `<div class="section-title"><div><div class="eyebrow">INTEGRATIONS / ${d.provider.toUpperCase()}</div><h1>${d.title}</h1></div>${badge(d.ready)}</div><div class="integration-detail"><section class="panel"><h2>${d.provider}</h2><p>${d.copy}</p><ul>${d.items.map((item) => `<li>${item}</li>`).join("")}</ul><a class="doc-link" href="${d.href}" target="_blank" rel="noopener">${d.label} ↗</a></section></div>`;
+  if (section === "email") {
+    content.insertAdjacentHTML("beforeend",'<section class="panel"><h2>Delivery queue</h2><div id="notificationQueue" role="status">Loading delivery status…</div></section>');
+    loadNotificationQueue();
+  }
   if (section === "payments") {
     content.insertAdjacentHTML(
       "beforeend",
@@ -148,7 +152,7 @@ async function loadRefunds() {
       ? rows
           .map(
             (r) =>
-              `<div class="status-row"><div><strong>${escapeHtml(r.order_id.slice(0, 8))}</strong><p>${escapeHtml(r.reason.replaceAll("_", " "))} · ${escapeHtml(r.currency)} ${(Number(r.amount) / 100).toFixed(2)}</p>${r.last_error ? `<small>${escapeHtml(r.last_error)}</small>` : ""}</div><span class="badge ${["FAILED", "REVIEW"].includes(r.status) ? "pending" : ""}">${escapeHtml(r.status)}</span></div>`,
+              `<div class="status-row"><div><strong>${escapeHtml(r.order_id.slice(0, 8))}</strong><p>${escapeHtml(r.reason.replaceAll("_", " "))} · ${escapeHtml(r.currency)} ${(Number(r.amount) / 100).toFixed(2)}</p>${r.last_error ? `<small>${escapeHtml(r.last_error)}</small>` : ""}<p><button data-refund-inspect="${escapeHtml(r.order_id)}">Check provider status</button>${["FAILED","REVIEW"].includes(r.status)?` <button data-refund-retry="${escapeHtml(r.order_id)}">Retry after resolution</button>`:""}</p></div><span class="badge ${["FAILED", "REVIEW"].includes(r.status) ? "pending" : ""}">${escapeHtml(r.status)}</span></div>`,
           )
           .join("")
       : "No refunds have been requested.";
@@ -305,4 +309,30 @@ document.addEventListener("submit", (event) => {
   if (event.target.id !== "diagnosticForm") return;
   event.preventDefault();
   loadDiagnostics(Number(new FormData(event.target).get("attempts")));
+});
+
+async function loadNotificationQueue() {
+  const node=document.getElementById("notificationQueue"),user=TickItAuth.user?.id;
+  try {
+    const response=await fetch("/api/developer/notifications",{headers:{Authorization:`Bearer ${await TickItAuth.token()}`}});
+    if(!response.ok)throw new Error("Delivery status is unavailable.");
+    const data=await response.json();if(!node?.isConnected||TickItAuth.user?.id!==user)return;
+    node.innerHTML=`<p>${data.deliveryEnabled?"Mail transport enabled.":"Delivery disabled. Messages remain queued; no emails are marked sent."}</p><div>${data.counts.map(r=>`<div class="status-row"><span>${escapeHtml(r.status)}</span><strong>${Number(r.total)}</strong></div>`).join("")||"No notification jobs yet."}</div><h3>Recent jobs</h3>${data.recent.map(r=>`<div class="status-row"><div>${escapeHtml(r.kind)} · ${Number(r.attempts)} attempts${r.last_error?`<p>${escapeHtml(r.last_error)}</p>`:""}</div><span class="badge ${r.status==="FAILED"?"pending":""}">${escapeHtml(r.status)}</span></div>`).join("")}`;
+  }catch(error){if(node?.isConnected&&TickItAuth.user?.id===user)node.textContent=error.message;}
+}
+
+document.addEventListener("click",async(event)=>{
+  const inspect=event.target.closest("[data-refund-inspect]"), retry=event.target.closest("[data-refund-retry]");
+  const button=inspect||retry;if(!button)return;
+  const user=TickItAuth.user?.id;let reason;
+  if(retry){reason=window.prompt("What provider/account issue was resolved? This retries the original full refund; it does not create a new refund key.");if(!reason?.trim())return;if(reason.length>500){window.alert("Use a reason of up to 500 characters.");return;}}
+  button.disabled=true;
+  try{
+    const id=inspect?button.dataset.refundInspect:button.dataset.refundRetry;
+    const response=await fetch(`/api/developer/payments/refunds/${encodeURIComponent(id)}/${inspect?"inspect":"retry"}`,{method:"POST",headers:{Authorization:`Bearer ${await TickItAuth.token()}`,"Content-Type":"application/json"},...(retry?{body:JSON.stringify({reason})}:{})});
+    const data=await response.json();if(TickItAuth.user?.id!==user)return;
+    if(!response.ok)throw new Error(data.error||"Refund operation failed.");
+    if(inspect)window.alert(`Provider payment: ${data.providerPaymentStatus}. Refunded: ${(data.amountRefunded/100).toFixed(2)} INR. Refund record: ${data.refund.status}.`);
+    await loadRefunds();
+  }catch(error){if(TickItAuth.user?.id===user)window.alert(error.message);}finally{if(button.isConnected)button.disabled=false;}
 });

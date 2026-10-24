@@ -47,6 +47,9 @@ jobs:
         env:
           PLAYWRIGHT_BROWSER_CHANNEL: chrome
       - run: node --check src/main/resources/static/js/app.js
+      - run: node --check src/main/resources/static/js/tickets.js
+      - run: node --check src/main/resources/static/organizer/operations.js
+      - run: node --check src/main/resources/static/organizer/entry.js
       - run: node --check src/main/resources/static/js/auth.js
       - run: node --check src/main/resources/static/developer/portal.js
       - run: node --check src/main/resources/static/organizer/organizer.js

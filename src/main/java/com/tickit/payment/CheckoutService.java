@@ -20,6 +20,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class CheckoutService {
   private final PaymentSettings settings;
   private final RefundService refunds;
+  private final com.tickit.ticket.TicketService tickets;
+  private final com.tickit.notification.NotificationOutbox notifications;
   private final EventSnapshots eventSnapshots;
   private final CheckoutStore store;
   private final org.springframework.jdbc.core.JdbcTemplate jdbc;
@@ -434,6 +436,8 @@ public class CheckoutService {
             jdbc.update(
                 "UPDATE admission_hold SET released=true WHERE id=?", order.admissionHoldId());
           store.status(id, "CONFIRMED", payment.id());
+          tickets.issue(id);
+          notifications.booking(id);
           afterCommitRelease(order, items, true);
         });
   }
@@ -508,6 +512,7 @@ public class CheckoutService {
     result.put("event", eventSnapshots.get(order.eventId()));
     result.put("status", status);
     result.put("refund", refunds.summary(order.id()));
+    result.put("tickets", tickets.forOrder(order.id()));
     result.put("amount", order.amount());
     result.put("currency", order.currency());
     result.put("providerOrderId", order.providerOrderId());
