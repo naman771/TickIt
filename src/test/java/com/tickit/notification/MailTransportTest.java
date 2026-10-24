@@ -91,4 +91,14 @@ class MailTransportTest {
     settings.setTransport("unsupported");
     assertThrows(IllegalStateException.class, settings::validate);
   }
+
+  @Test
+  void restrictedRecipientCannotMakeProviderRequestEvenIfWorkerIsBypassed() {
+    settings.setAllowedRecipients("owner@tickit.test");
+    assertThrows(
+        IllegalStateException.class,
+        () -> transport.send(UUID.randomUUID(), "guest@tickit.test", "Tickets", "Body"));
+    verifyNoInteractions(http, smtp);
+    assertTrue(settings.permits("OWNER@tickit.test"));
+  }
 }

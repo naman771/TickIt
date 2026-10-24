@@ -36,6 +36,8 @@ public class MailTransport {
 
   public void send(UUID id, String to, String subject, String body) throws Exception {
     if (!settings.isEnabled()) throw new IllegalStateException("Email delivery disabled");
+    if (!settings.permits(to))
+      throw new IllegalStateException("Recipient is outside the configured delivery scope");
     new InternetAddress(settings.getFrom(), true).validate();
     new InternetAddress(to, true).validate();
     if ("brevo".equals(settings.getTransport())) {

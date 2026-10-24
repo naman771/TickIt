@@ -317,7 +317,7 @@ async function loadNotificationQueue() {
     const response=await fetch("/api/developer/notifications",{headers:{Authorization:`Bearer ${await TickItAuth.token()}`}});
     if(!response.ok)throw new Error("Delivery status is unavailable.");
     const data=await response.json();if(!node?.isConnected||TickItAuth.user?.id!==user)return;
-    node.innerHTML=`<p>${data.deliveryEnabled?"Mail transport enabled.":"Delivery disabled. Messages remain queued; no emails are marked sent."}</p><div>${data.counts.map(r=>`<div class="status-row"><span>${escapeHtml(r.status)}</span><strong>${Number(r.total)}</strong></div>`).join("")||"No notification jobs yet."}</div><h3>Recent jobs</h3>${data.recent.map(r=>`<div class="status-row"><div>${escapeHtml(r.kind)} · ${Number(r.attempts)} attempts${r.last_error?`<p>${escapeHtml(r.last_error)}</p>`:""}</div><span class="badge ${r.status==="FAILED"?"pending":""}">${escapeHtml(r.status)}</span></div>`).join("")}`;
+    node.innerHTML=`<p>${data.deliveryEnabled?"Mail transport enabled.":"Delivery disabled. Messages remain queued; no emails are marked sent."}</p><div>${data.counts.map(r=>`<div class="status-row"><span>${escapeHtml(r.status)}</span><strong>${Number(r.total)}</strong></div>`).join("")||"No notification jobs yet."}</div><p>${data.restrictedRecipients ? `Delivery is restricted to ${Number(data.restrictedRecipients)} configured recipient(s).` : "No recipient restriction is configured."}</p><h3>Recent jobs</h3>${data.recent.map(r=>`<div class="status-row"><div>${escapeHtml(r.kind)} · ${Number(r.attempts)} attempts${r.recipient?`<small> · ${escapeHtml(r.recipient)}</small>`:""}${["HELD","QUEUED","RETRY","FAILED"].includes(r.status)?`<p>${r.status==="HELD"?`<button data-notification-review="RELEASE" data-notification-id="${escapeHtml(r.id)}">Release reviewed message</button> `:""}${r.status==="FAILED"?`<button data-notification-review="RETRY" data-notification-id="${escapeHtml(r.id)}">Retry failed message</button> `:""}<button data-notification-review="SUPPRESS" data-notification-id="${escapeHtml(r.id)}">Suppress message</button></p>`:""}${r.last_error?`<p>${escapeHtml(r.last_error)}</p>`:""}</div><span class="badge ${r.status==="FAILED"?"pending":""}">${escapeHtml(r.status)}</span></div>`).join("")}`;
   }catch(error){if(node?.isConnected&&TickItAuth.user?.id===user)node.textContent=error.message;}
 }
 
@@ -334,5 +334,19 @@ document.addEventListener("click",async(event)=>{
     if(!response.ok)throw new Error(data.error||"Refund operation failed.");
     if(inspect)window.alert(`Provider payment: ${data.providerPaymentStatus}. Refunded: ${(data.amountRefunded/100).toFixed(2)} INR. Refund record: ${data.refund.status}.`);
     await loadRefunds();
+  }catch(error){if(TickItAuth.user?.id===user)window.alert(error.message);}finally{if(button.isConnected)button.disabled=false;}
+});
+
+document.addEventListener("click",async event=>{
+  const button=event.target.closest("[data-notification-review]");if(!button)return;
+  const user=TickItAuth.user?.id;
+  const reason=window.prompt(button.dataset.notificationReview==="RETRY"?"Why is this failed notification ready to retry?":button.dataset.notificationReview==="RELEASE"?"Confirm why this held historical message should now be sent.":"Why should this queued message be suppressed? Booking and payment records are preserved.");
+  if(!reason?.trim())return;if(reason.length>500){window.alert("Use up to 500 characters.");return;}
+  button.disabled=true;
+  try{
+    const response=await fetch(`/api/developer/notifications/${encodeURIComponent(button.dataset.notificationId)}/review`,{method:"POST",headers:{Authorization:`Bearer ${await TickItAuth.token()}`,"Content-Type":"application/json"},body:JSON.stringify({action:button.dataset.notificationReview,reason})});
+    const data=await response.json();if(TickItAuth.user?.id!==user)return;
+    if(!response.ok)throw new Error(data.error||"Notification review could not be recorded.");
+    await loadNotificationQueue();
   }catch(error){if(TickItAuth.user?.id===user)window.alert(error.message);}finally{if(button.isConnected)button.disabled=false;}
 });

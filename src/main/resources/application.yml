@@ -94,6 +94,7 @@ app:
     from: ${EMAIL_FROM:}
     transport: ${EMAIL_TRANSPORT:smtp}
     brevo-api-key: ${BREVO_API_KEY:}
+    allowed-recipients: ${EMAIL_ALLOWED_RECIPIENTS:}
     enabled: ${EMAIL_ENABLED:false}
 
 # ── Actuator ─────────────────────────────────────────────

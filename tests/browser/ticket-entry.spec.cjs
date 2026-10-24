@@ -87,3 +87,47 @@ test('developer delivery queue shows disabled mail and durable pending jobs hone
   await page.route('**/api/developer/**',r=>r.fulfill({json:r.request().url().endsWith('/overview')?{catalog:{events:1,seats:3,bookings:1,accounts:1},services:{postgresql:true,redis:true,objectStorage:true},integrations:{authentication:true,payments:true,email:false},checkedAt:'fixture'}:{deliveryEnabled:false,counts:[{status:'QUEUED',total:2}],recent:[{kind:'BOOKING',attempts:0,status:'QUEUED'}]}}));
   await page.goto('/developer/');await page.locator('[data-section="email"]').click();await expect(page.locator('#notificationQueue')).toContainText('Messages remain queued');await expect(page.locator('#notificationQueue')).toContainText('QUEUED');expect(errors).toEqual([]);
 });
+
+test('delayed staff update cannot replace a newer organizer route',async({page})=>{
+  const errors=await setup(page);let started=false,release;
+  const wait=new Promise(resolve=>release=resolve);
+  await page.route('**/api/**',async r=>{
+    const p=new URL(r.request().url()).pathname;
+    if(p==='/api/organizer/profile')return r.fulfill({json:{id:101,displayName:'Fixture events'}});
+    if(p==='/api/organizer/events')return r.fulfill({json:[]});
+    if(p.endsWith('/staff')){started=true;await wait;return r.fulfill({json:[]});}
+    if(p.endsWith('/operations'))return r.fulfill({json:{financials:{captured_orders:0,captured_amount:0,refunded_amount:0,outstanding_refund_amount:0},admissions:{issued:0,checked_in:0},guests:[],staff:[],scans:[]}});
+    return r.fulfill({status:404,json:{error:'Unknown fixture route'}});
+  });
+  await page.goto('/organizer/#operations/901');await page.getByLabel('Verified staff email').fill('entry@tickit.test');
+  await page.getByRole('button',{name:'Grant check-in access'}).click();await expect.poll(()=>started).toBe(true);
+  await page.evaluate(()=>{location.hash='';});await expect(page.getByRole('heading',{name:'Your first event starts here.'})).toBeVisible();
+  release();await page.waitForTimeout(150);await expect(page.getByRole('heading',{name:'Your first event starts here.'})).toBeVisible();expect(errors).toEqual([]);
+});
+
+test('camera permission completing after sign-out stops the returned camera stream',async({page})=>{
+  await page.addInitScript(()=>{
+    let finish;window.cameraPending=new Promise(resolve=>finish=resolve);window.cameraStopped=false;
+    Object.defineProperty(navigator,'mediaDevices',{value:{getUserMedia:()=>window.cameraPending},configurable:true});
+    window.finishCamera=()=>finish({getTracks:()=>[{stop(){window.cameraStopped=true}}]});
+  });
+  const f=await entry(page);await page.getByRole('button',{name:'Use camera'}).click();
+  await page.evaluate(()=>TickItAuth.signOut());await page.evaluate(()=>window.finishCamera());
+  await expect.poll(()=>page.evaluate(()=>window.cameraStopped)).toBe(true);
+  await expect(page.getByRole('heading',{name:'Event entry.',exact:true})).toBeVisible();expect(f.errors).toEqual([]);
+});
+
+test('developer can review failed notifications without mutating bookings',async({page})=>{
+  const errors=await setup(page);let reviewed=false;
+  page.on('dialog',d=>d.accept('Provider configuration reviewed'));
+  await page.route('**/api/developer/**',r=>{
+    const p=new URL(r.request().url()).pathname;
+    if(p.endsWith('/overview'))return r.fulfill({json:{catalog:{events:1,seats:1,bookings:1,accounts:1},services:{postgresql:true,redis:true,objectStorage:true},integrations:{authentication:true,payments:true,email:false},checkedAt:'fixture'}});
+    if(p.endsWith('/review')){reviewed=true;return r.fulfill({json:{recorded:true}});}
+    return r.fulfill({json:{deliveryEnabled:false,restrictedRecipients:1,counts:[],recent:[{id:order,kind:'BOOKING',status:reviewed?'RETRY':'FAILED',recipient:'owner@tickit.test',attempts:reviewed?0:8}]}});
+  });
+  await page.goto('/developer/');await page.locator('[data-section="email"]').click();
+  await page.getByRole('button',{name:'Retry failed message'}).click();
+  await expect(page.getByRole('button',{name:'Retry failed message'})).toHaveCount(0);
+  await expect(page.locator('#notificationQueue')).toContainText('RETRY');expect(reviewed).toBe(true);expect(errors).toEqual([]);
+});

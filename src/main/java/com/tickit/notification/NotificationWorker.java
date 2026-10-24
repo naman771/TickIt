@@ -13,6 +13,7 @@ public class NotificationWorker {
   private final JdbcTemplate jdbc;
   private final MailTransport transport;
   private final NotificationOutbox outbox;
+  private final EmailSettings settings;
 
   @Value("${app.email.enabled:false}")
   private boolean enabled;
@@ -33,18 +34,39 @@ public class NotificationWorker {
     // Disabled delivery leaves durable intents queued. It never claims to have sent mail.
     if (!enabled) return false;
     UUID lease = UUID.randomUUID();
+    var args = new ArrayList<Object>();
+    args.add(lease);
+    String scope = "";
+    if (!settings.recipients().isEmpty()) {
+      scope =
+          " AND lower(recipient) IN ("
+              + String.join(",", Collections.nCopies(settings.recipients().size(), "?"))
+              + ")";
+      args.addAll(settings.recipients());
+    }
     var rows =
         jdbc.queryForList(
             "UPDATE notification_outbox SET lease_token=?,lease_until=clock_timestamp()+interval"
                 + " '120 seconds' WHERE id=(SELECT id FROM notification_outbox WHERE status IN"
-                + " ('QUEUED','RETRY') AND next_attempt_at<=clock_timestamp() AND (lease_until IS"
+                + " ('QUEUED','RETRY')"
+                + scope
+                + " AND next_attempt_at<=clock_timestamp() AND (lease_until IS"
                 + " NULL OR lease_until<clock_timestamp()) ORDER BY next_attempt_at FOR UPDATE SKIP"
                 + " LOCKED LIMIT 1) RETURNING *",
-            lease);
+            args.toArray());
     if (rows.isEmpty()) return false;
     var row = rows.getFirst();
     UUID id = (UUID) row.get("id");
     try {
+      if (!outbox.current(id)) {
+        jdbc.update(
+            "UPDATE notification_outbox SET status='SUPPRESSED',last_error='Superseded or"
+                + " invalidated notification', lease_token=NULL,lease_until=NULL WHERE id=? AND"
+                + " lease_token=?",
+            id,
+            lease);
+        return true;
+      }
       transport.send(
           id, (String) row.get("recipient"), (String) row.get("subject"), (String) row.get("body"));
       jdbc.update(

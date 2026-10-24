@@ -21,6 +21,7 @@ public class DeveloperController {
   private final com.tickit.payment.PaymentSettings payments;
   private final com.tickit.payment.RefundService refundService;
   private final com.tickit.notification.EmailSettings email;
+  private final com.tickit.notification.NotificationReview notificationReview;
   private final org.springframework.jdbc.core.JdbcTemplate jdbc;
   private final DeveloperAccess access;
   private final AssetStorageService storage;
@@ -113,12 +114,36 @@ public class DeveloperController {
     return Map.of(
         "deliveryEnabled",
         emailEnabled,
+        "restrictedRecipients",
+        email.recipients().size(),
         "counts",
         jdbc.queryForList("SELECT status,count(*) total FROM notification_outbox GROUP BY status"),
         "recent",
         jdbc.queryForList(
-            "SELECT id,event_id,kind,status,attempts,created_at,sent_at,last_error FROM"
+            "SELECT id,event_id,kind,status,recipient,attempts,created_at,sent_at,last_error FROM"
                 + " notification_outbox ORDER BY created_at DESC LIMIT 100"));
+  }
+
+  public record NotificationAction(
+      @jakarta.validation.constraints.NotBlank
+          @jakarta.validation.constraints.Pattern(regexp = "RETRY|SUPPRESS|RELEASE")
+          String action,
+      @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 500)
+          String reason) {}
+
+  @PostMapping("/notifications/{id}/review")
+  public Map<String, Object> reviewNotification(
+      @PathVariable java.util.UUID id,
+      @jakarta.validation.Valid @RequestBody NotificationAction input) {
+    access.requireDeveloper();
+    notificationReview.act(
+        id,
+        input.action(),
+        input.reason(),
+        org.springframework.security.core.context.SecurityContextHolder.getContext()
+            .getAuthentication()
+            .getName());
+    return Map.of("recorded", true);
   }
 
   @GetMapping("/overview")

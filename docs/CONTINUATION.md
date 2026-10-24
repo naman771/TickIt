@@ -17,16 +17,16 @@ Flyway additions: **V9** (admissions, staff, scans, outbox) and **V10** (refund 
 ## Verification completed
 
 ```text
-DB_USER=naman mvn -B verify
-Tests run: 174, Failures: 0, Errors: 0, Skipped: 2
+DB_USER=naman TZ=UTC mvn -B -DargLine=-Duser.timezone=UTC verify
+Tests run: 185, Failures: 0, Errors: 0, Skipped: 3
 BUILD SUCCESS
 ```
 
-That is **172 passing backend tests**; the optional external Neon and Razorpay tests are skipped in this ordinary run. The packaged executable JAR was built successfully.
+That is **182 passing backend tests**; the optional external Neon, Razorpay and Brevo tests are skipped in this ordinary run. The packaged executable JAR was built successfully.
 
-The browser suite passed **68 desktop/mobile checks**. It uses explicit identity/API fixtures, not impersonated Clerk sessions. Tests cover ticket display/download/print, sign-out during loading, scanner results and network errors, reports/staff access controls, and notification visibility. Backend tests decode an actual generated PNG QR, submit it through the image scanner, and race real PostgreSQL check-in transactions.
+The browser suite passed **74 desktop/mobile checks**. It uses explicit identity/API fixtures, not impersonated Clerk sessions. Tests cover ticket display/download/print, sign-out during loading, scanner results and network errors, reports/staff access controls, and notification visibility. Backend tests decode an actual generated PNG QR, submit it through the image scanner, and race real PostgreSQL check-in transactions.
 
-`node scripts/build-organizer.mjs` succeeds. New dependency: ZXing Core 3.5.4. The actual mobile camera permission/hardware path, real email acceptance/delivery, container/live deployments require separate release verification.
+`node scripts/build-organizer.mjs` succeeds. New dependency: ZXing Core 3.5.4. The actual mobile camera hardware path and real email acceptance/delivery require separate acceptance. GitHub CI and both Render services verified the previous ticket release; this checkpoint requires its own release checks.
 
 ## External refund issue
 
@@ -40,12 +40,12 @@ The dashboard offers no speed selector. TickIt's existing request already uses `
 
 Render Free blocks SMTP ports 25/465/587. Use `EMAIL_TRANSPORT=brevo` for the implemented HTTPS transport after an appropriate free account and sender are approved. Set `BREVO_API_KEY`, `EMAIL_FROM` and `APP_PUBLIC_URL` privately. Keep `EMAIL_ENABLED=false` until configuration and an explicitly authorized real send are validated. No paid upgrade, domain purchase, real funding or paid email service is authorized.
 
-A provider acceptance response is not proof of inbox delivery. Delivery/bounce webhooks and notification dead-letter replay tooling are not implemented. SMTP/HTTP acknowledgement loss can cause duplicate delivery; the outbox prevents duplicate job creation, not mathematically exactly-once external email.
+A provider acceptance response is not proof of inbox delivery. Delivery/bounce webhooks are not implemented. Audited failed-message retry and held-message release are implemented. SMTP/HTTP acknowledgement loss can cause duplicate delivery; the outbox prevents duplicate job creation, not mathematically exactly-once external email.
 
 ## Remaining operational work
 
 1. Confirm the deployed revision and release checks; avoid starting a second implementation of these features.
-2. Add remaining boundary acceptance tests: wrong-event QR for an owner of both events, oversized/corrupt image metadata, staff revoke/scan race, reschedule check-in window, and delayed operations navigation. Existing coverage is substantial, not exhaustive.
+2. Boundary acceptance tests now cover wrong-event QR for an owner of both events, oversized/corrupt images, the staff revoke/scan race, rescheduled entry windows, delayed operations navigation and camera permission completing after sign-out. Full physical-device acceptance remains separate.
 3. Inspect ticket/operations/entry layouts visually and validate the actual mobile camera flow with the owner.
 4. Apply V9/V10 and a small critical regression selection to a **disposable Neon branch**; isolate inherited operational refund/notification queues in that copy only. Restore production CLI context and delete the branch afterward. Never clear production queues.
 5. Run container/advisory checks for the new dependency, then publish/deploy the reviewed checkpoint when authorized. Verify current build assets, authentication boundaries, CORS, private tickets, organizer staff and public deep links on the actual origins. `node scripts/verify-release.mjs CUSTOMER_ORIGIN ORGANIZER_ORIGIN` only verifies public assets and anonymous rejections; it does not replace authenticated acceptance.
@@ -57,8 +57,16 @@ Original scope still deferred: customer-requested partial cancellations/refunds,
 
 ## Evidence locations
 
-From the repository, local logs are in `../../work/`: `stage1-refunds-tests.log` (initial fixture environment failure), `stage2-payment-tests.log` (52 passed), `stage5-targeted.log` (71 passed), `stage6-full-backend.log` (174 total / 172 passing), `stage4-browser.log` and `stage6-final-browser.log`. Logs are local and gitignored; never commit `.env` or cloud credentials.
+From the repository, local logs are in `../../work/`: `stage1-refunds-tests.log` (initial fixture environment failure), `stage2-payment-tests.log` (52 passed), `stage5-targeted.log` (71 passed), `email-entry-full-tests.log` (185 total / 182 passing), `email-entry-final-browser.log` (74 passing browser checks). Logs are local and gitignored; never commit `.env` or cloud credentials.
 
 ## Pre-publication cloud verification
 
 On 24 October, V9 and V10 applied successfully to a disposable Neon branch. Nine critical ticket/check-in, staff authorization, outbox and refund recovery tests passed with zero failures/errors. The production CLI context was restored and the disposable branch removed. Runtime advisory scanning checked 178 coordinates with zero flagged packages at scan time. Physical-camera and real email delivery acceptance remain separate.
+
+## Entry and email activation checkpoint
+
+The previous ticket release (`dd4835b`) passed GitHub CI, its Docker build and both Render deployments. Additional entry boundaries and audited notification review are implemented locally with 182 passing backend tests and 74 passing browser checks. V11/V12 add message references, operator audit and a held historical backlog; stale business notifications are suppressed before sending. Recipient scoping is enforced at both the worker and transport. A late staff-access response no longer replaces a newer organizer page.
+
+The owner confirmed a downloaded QR is readable by a phone camera. That does not establish an authorized TickIt admission or duplicate-scan rejection on physical hardware. No live QR was consumed by automated acceptance.
+
+The owner is setting up Brevo Free. Real provider acceptance and inbox confirmation are pending; hosted delivery remains disabled. See [notification activation](NOTIFICATIONS.md). The new checkpoint's cloud validation and hosted rollout must be recorded after completion, separately from the previous release.

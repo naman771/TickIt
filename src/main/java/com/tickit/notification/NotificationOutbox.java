@@ -20,17 +20,26 @@ public class NotificationOutbox {
   }
 
   private void enqueue(
-      String key, long user, long event, String kind, String subject, String body) {
+      String key,
+      long user,
+      long event,
+      UUID order,
+      Long change,
+      String kind,
+      String subject,
+      String body) {
     // Recipient is sourced from our verified identity profile, never from a checkout payload.
     jdbc.update(
         "INSERT INTO"
-            + " notification_outbox(id,dedupe_key,user_id,event_id,kind,recipient,subject,body)"
-            + " SELECT ?,?,?,?,?,email,?,? FROM app_user WHERE id=? ON CONFLICT(dedupe_key) DO"
+            + " notification_outbox(id,dedupe_key,user_id,event_id,order_id,event_change_id,kind,recipient,subject,body)"
+            + " SELECT ?,?,?,?,?,?,?,email,?,? FROM app_user WHERE id=? ON CONFLICT(dedupe_key) DO"
             + " NOTHING",
         UUID.randomUUID(),
         key,
         user,
         event,
+        order,
+        change,
         kind,
         subject.substring(0, Math.min(subject.length(), 240)),
         body,
@@ -49,6 +58,8 @@ public class NotificationOutbox {
           "booking:" + order,
           ((Number) row.get("user_id")).longValue(),
           ((Number) row.get("event_id")).longValue(),
+          order,
+          null,
           "BOOKING",
           "Your TickIt booking is confirmed",
           "Your booking for "
@@ -77,6 +88,8 @@ public class NotificationOutbox {
           "change:" + change + ":" + user,
           user,
           event,
+          null,
+          change,
           "EVENT_CHANGE",
           "Update to your TickIt event",
           row.get("name")
@@ -91,8 +104,8 @@ public class NotificationOutbox {
                       + row.get("new_timezone")
                       + "). Your confirmed tickets remain on your account."
                   : "\n"
-                        + "Your tickets cannot be used for entry. Any eligible full refund is"
-                        + " tracked in My tickets.")
+                      + "Your tickets cannot be used for entry. Any eligible full refund is"
+                      + " tracked in My tickets.")
               + "\nCheck My tickets for the latest event and refund status."
               + ticketLink());
     }
@@ -111,6 +124,8 @@ public class NotificationOutbox {
           "refund:" + order + ":" + status,
           ((Number) row.get("user_id")).longValue(),
           ((Number) row.get("event_id")).longValue(),
+          order,
+          null,
           "REFUND",
           "Your TickIt refund update",
           "Refund for "
@@ -121,13 +136,30 @@ public class NotificationOutbox {
               + status
               + ("PROCESSED".equals(status)
                   ? "\n"
-                        + "The payment provider has processed your full refund. Bank credit timing"
-                        + " depends on the payment method."
+                      + "The payment provider has processed your full refund. Bank credit timing"
+                      + " depends on the payment method."
                   : "\n"
-                        + "This refund requires support follow-up. Keep your order reference and"
-                        + " check My tickets. Do not pay again.")
+                      + "This refund requires support follow-up. Keep your order reference and"
+                      + " check My tickets. Do not pay again.")
               + ticketLink());
     }
+  }
+
+  /** Recheck durable state immediately before attempting an external send. */
+  public boolean current(UUID id) {
+    return Boolean.TRUE.equals(
+        jdbc.queryForObject(
+            "SELECT CASE n.kind WHEN 'BOOKING' THEN EXISTS(SELECT 1 FROM checkout_order o JOIN"
+                + " event e ON e.id=o.event_id WHERE o.id=n.order_id AND o.status='CONFIRMED' AND"
+                + " o.provider_payment_id IS NOT NULL AND e.publication_status='PUBLISHED' AND NOT"
+                + " EXISTS(SELECT 1 FROM refund_job r WHERE r.order_id=o.id)) WHEN 'EVENT_CHANGE'"
+                + " THEN n.event_change_id=(SELECT max(c.id) FROM event_change c WHERE"
+                + " c.event_id=n.event_id) WHEN 'REFUND' THEN EXISTS(SELECT 1 FROM refund_job r"
+                + " WHERE r.order_id=n.order_id AND"
+                + " n.dedupe_key='refund:'||r.order_id::text||':'||r.status) ELSE false END FROM"
+                + " notification_outbox n WHERE n.id=?",
+            Boolean.class,
+            id));
   }
 
   /**

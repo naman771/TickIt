@@ -62,6 +62,11 @@ class PaymentFlowTest {
   @Autowired com.tickit.ticket.TicketService ticketService;
   @Autowired com.tickit.notification.NotificationOutbox outbox;
   @Autowired com.tickit.notification.NotificationWorker notificationWorker;
+  @Autowired com.tickit.notification.EmailSettings emailSettings;
+
+  @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+  com.tickit.ticket.TicketAccess ticketAccess;
+
   @MockitoBean com.tickit.notification.MailTransport mail;
 
   Event event;
@@ -114,6 +119,7 @@ class PaymentFlowTest {
     user = account();
     other = account();
     reset(gateway, mail);
+    emailSettings.setAllowedRecipients("");
     org.springframework.test.util.ReflectionTestUtils.setField(
         notificationWorker, "enabled", false);
     when(gateway.create(any(), anyLong(), anyString()))
@@ -1601,5 +1607,270 @@ class PaymentFlowTest {
             "SELECT status FROM notification_outbox WHERE event_id=?",
             String.class,
             event.getId()));
+  }
+
+  @Test
+  void ownerOfTwoEventsCannotAdmitOneEventsTicketAtTheOtherEvent() throws Exception {
+    entryTime();
+    var order = paidForRefund();
+    UUID ticket = firstTicket(order);
+    String code = ticketDetails(ticket, user).get("credential").asString();
+    var another =
+        events.saveAndFlush(
+            Event.builder()
+                .name("Another event")
+                .currency("INR")
+                .city("Mumbai")
+                .startTime(event.getStartTime())
+                .organizer(event.getOrganizer())
+                .build());
+    try {
+      mvc.perform(
+              post("/api/organizer/events/" + another.getId() + "/check-in")
+                  .with(as(user))
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(json.writeValueAsString(Map.of("credential", code))))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.outcome").value("INVALID"));
+      assertNull(ticketService.forOrder(refundOrderId(order)).getFirst().checkedInAt());
+      assertEquals("ADMITTED", scanCode(code, user).get("outcome").asString());
+    } finally {
+      events.deleteById(another.getId());
+    }
+  }
+
+  @Test
+  void rescheduledTicketsRetainCredentialAndUseTheNewEntryWindow() throws Exception {
+    entryTime();
+    var order = paidForRefund();
+    UUID id = firstTicket(order);
+    String code = ticketDetails(id, user).get("credential").asString();
+    var edit = eventForEditing();
+    var next = LocalDateTime.now(ZoneId.of(event.getTimezone())).plusDays(5);
+    edit.put("startTime", next.toString());
+    edit.put("endTime", next.plusHours(3).toString());
+    edit.put("changeReason", "New venue availability");
+    mvc.perform(
+            put("/api/organizer/events/" + event.getId())
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(edit)))
+        .andExpect(status().isOk());
+    assertEquals(code, ticketDetails(id, user).get("credential").asString());
+    assertEquals("TOO_EARLY", scanCode(code, user).get("outcome").asString());
+    assertNull(ticketService.forOrder(refundOrderId(order)).getFirst().checkedInAt());
+  }
+
+  @Test
+  void revocationCommittedWhileScanWaitsForEventLockPreventsAdmission() throws Exception {
+    entryTime();
+    var order = paidForRefund();
+    String code = ticketDetails(firstTicket(order), user).get("credential").asString();
+    jdbc.update(
+        "INSERT INTO event_staff(event_id,user_id,granted_by) VALUES(?,?,?)",
+        event.getId(),
+        other.getId(),
+        user.getId());
+    var passedFirstCheck = new CountDownLatch(1);
+    doAnswer(
+            a -> {
+              var result = a.callRealMethod();
+              passedFirstCheck.countDown();
+              return result;
+            })
+        .when(ticketAccess)
+        .scanner(event.getId());
+    var executor = Executors.newSingleThreadExecutor();
+    var pending = new java.util.concurrent.atomic.AtomicReference<Future<Integer>>();
+    try {
+      transaction.executeWithoutResult(
+          s -> {
+            jdbc.queryForObject(
+                "SELECT id FROM event WHERE id=? FOR UPDATE", Long.class, event.getId());
+            jdbc.update(
+                "DELETE FROM event_staff WHERE event_id=? AND user_id=?",
+                event.getId(),
+                other.getId());
+            pending.set(
+                executor.submit(
+                    () ->
+                        mvc.perform(
+                                post("/api/organizer/events/" + event.getId() + "/check-in")
+                                    .with(as(other))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(json.writeValueAsString(Map.of("credential", code))))
+                            .andReturn()
+                            .getResponse()
+                            .getStatus()));
+            try {
+              assertTrue(passedFirstCheck.await(15, TimeUnit.SECONDS));
+            } catch (InterruptedException ex) {
+              Thread.currentThread().interrupt();
+              throw new RuntimeException(ex);
+            }
+          });
+      assertEquals(404, pending.get().get(20, TimeUnit.SECONDS));
+      assertNull(ticketService.forOrder(refundOrderId(order)).getFirst().checkedInAt());
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void scannerRejectsOversizedDimensionsAndMalformedImageWithoutConsumingTicket() throws Exception {
+    entryTime();
+    var order = paidForRefund();
+    var image =
+        new java.awt.image.BufferedImage(2049, 1, java.awt.image.BufferedImage.TYPE_INT_RGB);
+    var bytes = new java.io.ByteArrayOutputStream();
+    javax.imageio.ImageIO.write(image, "PNG", bytes);
+    String path = "/api/organizer/events/" + event.getId() + "/check-in/image";
+    for (byte[] input :
+        List.of(
+            bytes.toByteArray(),
+            new byte[2 * 1024 * 1024 + 1],
+            new byte[] {(byte) 137, 80, 78, 71, 13, 10, 26, 10}))
+      mvc.perform(
+              multipart(path)
+                  .file(
+                      new org.springframework.mock.web.MockMultipartFile(
+                          "file", "ticket.png", "image/png", input))
+                  .with(as(user)))
+          .andExpect(status().isBadRequest());
+    assertNull(ticketService.forOrder(refundOrderId(order)).getFirst().checkedInAt());
+  }
+
+  @Test
+  void cancelledBookingConfirmationIsSuppressedButLatestCancellationNoticeIsSent()
+      throws Exception {
+    var order = paidForRefund();
+    cancelForRefund();
+    org.springframework.test.util.ReflectionTestUtils.setField(notificationWorker, "enabled", true);
+    assertTrue(notificationWorker.processOne());
+    verifyNoInteractions(mail);
+    assertEquals(
+        "SUPPRESSED",
+        jdbc.queryForObject(
+            "SELECT status FROM notification_outbox WHERE dedupe_key=?",
+            String.class,
+            "booking:" + refundOrderId(order)));
+    assertTrue(notificationWorker.processOne());
+    org.mockito.Mockito.verify(mail, times(1))
+        .send(any(), eq(user.getEmail()), eq("Update to your TickIt event"), anyString());
+  }
+
+  @Test
+  void restrictedDeliveryLeavesOtherRecipientsQueuedAndCannotBypassTransportScope()
+      throws Exception {
+    var order = paidForRefund();
+    emailSettings.setAllowedRecipients("somebody-else@tickit.test");
+    org.springframework.test.util.ReflectionTestUtils.setField(notificationWorker, "enabled", true);
+    assertFalse(notificationWorker.processOne());
+    verifyNoInteractions(mail);
+    emailSettings.setAllowedRecipients(user.getEmail().toUpperCase(java.util.Locale.ROOT));
+    assertTrue(notificationWorker.processOne());
+    org.mockito.Mockito.verify(mail, times(1))
+        .send(any(), eq(user.getEmail()), anyString(), anyString());
+  }
+
+  @Test
+  void developerNotificationReviewIsAuditedAndCannotChangeAcceptedOrClaimedMessages()
+      throws Exception {
+    var order = paidForRefund();
+    UUID id =
+        jdbc.queryForObject(
+            "SELECT id FROM notification_outbox WHERE event_id=?", UUID.class, event.getId());
+    String path = "/api/developer/notifications/" + id + "/review";
+    var dev = jwt().jwt(j -> j.issuer(ISSUER).subject("payment_test_developer"));
+    String retry = "{\"action\":\"RETRY\",\"reason\":\"Provider configuration corrected\"}";
+    mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(retry))
+        .andExpect(status().isUnauthorized());
+    mvc.perform(post(path).with(as(user)).contentType(MediaType.APPLICATION_JSON).content(retry))
+        .andExpect(status().isForbidden());
+    mvc.perform(post(path).with(dev).contentType(MediaType.APPLICATION_JSON).content(retry))
+        .andExpect(status().isConflict());
+    jdbc.update("UPDATE notification_outbox SET status='FAILED',attempts=8 WHERE id=?", id);
+    mvc.perform(post(path).with(dev).contentType(MediaType.APPLICATION_JSON).content(retry))
+        .andExpect(status().isOk());
+    assertEquals(
+        0,
+        jdbc.queryForObject(
+            "SELECT attempts FROM notification_outbox WHERE id=?", Integer.class, id));
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM notification_operation WHERE notification_id=?",
+            Integer.class,
+            id));
+    jdbc.update(
+        "UPDATE notification_outbox SET lease_token=?,lease_until=clock_timestamp()+interval '90"
+            + " seconds' WHERE id=?",
+        UUID.randomUUID(),
+        id);
+    String suppress = "{\"action\":\"SUPPRESS\",\"reason\":\"Reviewed historical message\"}";
+    mvc.perform(post(path).with(dev).contentType(MediaType.APPLICATION_JSON).content(suppress))
+        .andExpect(status().isConflict());
+    jdbc.update("UPDATE notification_outbox SET lease_until=NULL,status='SENT' WHERE id=?", id);
+    mvc.perform(post(path).with(dev).contentType(MediaType.APPLICATION_JSON).content(suppress))
+        .andExpect(status().isConflict());
+  }
+
+  @Test
+  void queuedRefundFailureNoticeIsSuppressedAfterRefundProcessed() throws Exception {
+    var order = paidForRefund();
+    cancelForRefund();
+    jdbc.update("UPDATE refund_job SET status='FAILED' WHERE order_id=?", refundOrderId(order));
+    outbox.refund(refundOrderId(order));
+    jdbc.update("UPDATE refund_job SET status='PROCESSED' WHERE order_id=?", refundOrderId(order));
+    outbox.refund(refundOrderId(order));
+    org.springframework.test.util.ReflectionTestUtils.setField(notificationWorker, "enabled", true);
+    for (int n = 0; n < 5 && notificationWorker.processOne(); n++) {}
+    assertEquals(
+        "SUPPRESSED",
+        jdbc.queryForObject(
+            "SELECT status FROM notification_outbox WHERE dedupe_key=?",
+            String.class,
+            "refund:" + refundOrderId(order) + ":FAILED"));
+    assertEquals(
+        "SENT",
+        jdbc.queryForObject(
+            "SELECT status FROM notification_outbox WHERE dedupe_key=?",
+            String.class,
+            "refund:" + refundOrderId(order) + ":PROCESSED"));
+  }
+
+  @Test
+  void heldBacklogRequiresExplicitAuditedReleaseBeforeDelivery() throws Exception {
+    var order = paidForRefund();
+    UUID id =
+        jdbc.queryForObject(
+            "SELECT id FROM notification_outbox WHERE event_id=?", UUID.class, event.getId());
+    jdbc.update("UPDATE notification_outbox SET status='HELD' WHERE id=?", id);
+    org.springframework.test.util.ReflectionTestUtils.setField(notificationWorker, "enabled", true);
+    assertFalse(notificationWorker.processOne());
+    verifyNoInteractions(mail);
+    var dev = jwt().jwt(j -> j.issuer(ISSUER).subject("payment_test_developer"));
+    mvc.perform(
+            post("/api/developer/notifications/" + id + "/review")
+                .with(dev)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"action\":\"RELEASE\",\"reason\":\"Reviewed existing customer receipt\"}"))
+        .andExpect(status().isOk());
+    assertEquals(
+        "Released after operator review",
+        jdbc.queryForObject(
+            "SELECT last_error FROM notification_outbox WHERE id=?", String.class, id));
+    assertTrue(notificationWorker.processOne());
+    assertEquals(
+        "SENT",
+        jdbc.queryForObject("SELECT status FROM notification_outbox WHERE id=?", String.class, id));
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM notification_operation WHERE notification_id=? AND"
+                + " action='RELEASE'",
+            Integer.class,
+            id));
   }
 }
