@@ -1126,8 +1126,8 @@ class PaymentFlowTest {
   }
 
   void entryTime() {
-    event.setStartTime(LocalDateTime.now().plusHours(1));
-    event.setEndTime(LocalDateTime.now().plusHours(3));
+    event.setStartTime(LocalDateTime.now(ZoneId.of(event.getTimezone())).plusHours(1));
+    event.setEndTime(LocalDateTime.now(ZoneId.of(event.getTimezone())).plusHours(3));
     event = events.saveAndFlush(event);
   }
 
@@ -1281,8 +1281,8 @@ class PaymentFlowTest {
     entryTime();
     var order = paidForRefund();
     String code = ticketDetails(firstTicket(order), user).get("credential").asString();
-    event.setStartTime(LocalDateTime.now().minusHours(5));
-    event.setEndTime(LocalDateTime.now().minusHours(1));
+    event.setStartTime(LocalDateTime.now(ZoneId.of(event.getTimezone())).minusHours(5));
+    event.setEndTime(LocalDateTime.now(ZoneId.of(event.getTimezone())).minusHours(1));
     event = events.saveAndFlush(event);
     assertEquals("ENDED", scanCode(code, user).get("outcome").asString());
     assertEquals(
