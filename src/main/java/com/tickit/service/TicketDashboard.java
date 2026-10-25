@@ -26,9 +26,12 @@ public class TicketDashboard {
         jdbc.queryForList(
             "SELECT publication_status FROM event e WHERE e.id=? AND (EXISTS (SELECT 1 FROM booking"
                 + " b WHERE b.event_id=e.id AND b.user_id=?) OR EXISTS (SELECT 1 FROM"
-                + " checkout_order o WHERE o.event_id=e.id AND o.user_id=?)) FOR UPDATE",
+                + " checkout_order o WHERE o.event_id=e.id AND o.user_id=?) OR EXISTS(SELECT 1 FROM"
+                + " admission_ticket t JOIN checkout_item i ON i.id=t.item_id JOIN checkout_order o"
+                + " ON o.id=i.order_id WHERE o.event_id=e.id AND t.holder_id=?)) FOR UPDATE",
             String.class,
             event,
+            user,
             user,
             user);
     if (statuses.isEmpty())

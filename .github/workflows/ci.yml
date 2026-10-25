@@ -46,6 +46,8 @@ jobs:
       - run: npm run test:browser
         env:
           PLAYWRIGHT_BROWSER_CHANNEL: chrome
+      - run: node --check src/main/resources/static/js/experience.js
+      - run: node --check src/main/resources/static/js/customer-tools.js
       - run: node --check src/main/resources/static/js/app.js
       - run: node --check src/main/resources/static/js/tickets.js
       - run: node --check src/main/resources/static/organizer/operations.js

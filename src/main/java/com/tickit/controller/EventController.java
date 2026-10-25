@@ -150,6 +150,7 @@ public class EventController {
         .scheduleChanged(event.getScheduleChangedAt() != null)
         .perOrderLimit(Math.min(3, event.getPerOrderLimit()))
         .minimumAge(event.getMinimumAge())
+        .cancellationCutoffHours(event.getCancellationCutoffHours())
         .currency(event.getCurrency())
         .category(event.getCategory())
         .city(event.getCity())
@@ -165,6 +166,19 @@ public class EventController {
         .name(event.getName())
         .slug(event.getSlug())
         .description(event.getDescription())
+        .organizerName(event.getOrganizer() == null ? null : event.getOrganizer().getDisplayName())
+        .information(
+            new com.tickit.dto.OrganizerEventRequest.Information(
+                event.getLanguages(),
+                event.getArtists(),
+                event.getEntryInstructions(),
+                event.getAccessibilityInfo(),
+                event.getTicketInclusions(),
+                event.getFaq()))
+        .endInstant(
+            event.getEndTime() == null
+                ? null
+                : event.getEndTime().atZone(java.time.ZoneId.of(event.getTimezone())).toInstant())
         .startTime(event.getStartTime())
         .endTime(event.getEndTime())
         .imageUrl(event.getImageUrl())

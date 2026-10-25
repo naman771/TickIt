@@ -32,7 +32,7 @@ Payment implementation and account prerequisites are documented in [PAYMENTS.md]
 
 ## Delivery stages and remaining work
 
-1. QR tickets are deployed. Physical-device camera/admission acceptance remains separate from automated tests and a phone reading a downloaded QR.
+1. QR tickets are deployed. The owner has confirmed physical-device admission and duplicate rejection; that acceptance is distinct from simply decoding a QR.
 2. Durable notifications and hosted sending are deployed. Provider delivery/bounce events and review of the held historical backlog remain.
 3. Organizer reports and scoped entry staff are deployed. Multi-organizer payouts/settlement remain separate from the current single merchant account.
 4. Public media and venue tools: safe poster uploads, reusable verified venue layouts and richer published standing-tier management.
@@ -41,3 +41,9 @@ Payment implementation and account prerequisites are documented in [PAYMENTS.md]
 ## 24 October ticket lifecycle release
 
 QR issuance, private downloads/print, online single-use check-in, event staff access, organizer reports, durable notifications and refund operator recovery are deployed. On 24 October, GitHub CI and both Render deployments were verified at `07e2b28`, including the customer ticket visibility/artwork update. See [continuation status](CONTINUATION.md) for evidence, external blockers and current next steps.
+
+## Customer experience release (local implementation)
+
+Event details, richer organizer information, city/date/budget discovery, saved events, mobile map controls, ticket filters/calendar/directions, tracked support/resends, admission transfers and opt-in full customer cancellation are implemented. See [behavior and limits](CUSTOMER_EXPERIENCE.md). Hosted deployment and provider acceptance remain separate from local test evidence.
+
+Organizer revenue must settle to approved organizer payout accounts before accepting real money. The existing test checkout does not implement marketplace settlement. Provider onboarding/eligibility, an organizer ledger and reversal reconciliation are required; Route activation is not assumed available.

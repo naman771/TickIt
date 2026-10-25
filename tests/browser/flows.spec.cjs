@@ -196,6 +196,7 @@ test("lower event limit and category filter survive navigation", async ({
   await page.goto("/");
   await page.locator('[data-category="community"]').click();
   await page.locator(".event-card a").first().click();
+  await page.getByRole("link",{name:"Choose tickets"}).click();
   await page.locator("[data-seat]").first().waitFor();
   await page.locator('a[href="#events"]').first().click();
   await expect(page.locator('[data-category="community"]')).toHaveClass(
@@ -912,7 +913,7 @@ test("legacy event links become readable paths and survive reload and browser na
   page,
 }) => {
   const f = await customer(page);
-  await expect(page).toHaveURL(/\/events\/independent-sessions-mumbai$/);
+  await expect(page).toHaveURL(/\/events\/independent-sessions-mumbai\/book$/);
   await page.reload();
   await expect(
     page.getByRole("heading", { name: common.name, exact: true }),

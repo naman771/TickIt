@@ -156,7 +156,7 @@ function editor(draft) {
   state.pools = structuredClone(draft.pools || []);
   const published = draft.status === "PUBLISHED";
   const locked = ["CANCELLED", "DELETED"].includes(draft.status);
-  root.innerHTML = `<section class="container"><a class="back" href="#">← All events</a><div class="page-head"><div><div class="eyebrow">${draft.id ? "Event workspace" : "Create an event"} / <span class="badge ${locked ? "" : "draft"}">${esc(draft.status || "Private draft")}</span></div><h1>${locked ? esc(draft.name) : draft.id ? "Keep shaping your event." : "Something worth showing up for."}</h1><p>${locked ? "This event is no longer on sale. Booking and payment records are retained." : published ? "Update available seats or change event dates. Booked seats cannot be removed or relabelled." : "Your draft stays private until you publish it."}</p></div><div class="top-actions"><button type="button" data-preview>Preview event</button>${draft.id ? `<a class="primary" href="#operations/${draft.id}">Bookings & entry</a><button data-duplicate>Duplicate as draft</button>${published ? `<a class="primary" style="padding:12px 18px;border-radius:5px;font-size:12px" href="${esc(base)}${draft.slug ? `/events/${encodeURIComponent(draft.slug)}` : `/#event/${draft.id}`}" target="_blank" rel="noopener">View customer page ↗</a>` : ""}` : ""}</div></div><form id="eventForm"><div class="editor-layout"><div><fieldset ${locked ? "disabled" : ""}><section class="panel"><div class="panel-head"><div><h2><small>01</small> The essentials</h2><p>Tell guests what they can look forward to.</p></div></div><div class="fields">${field("Event name", "name", draft.name, "text", 'required maxlength="512"', true)}<label class="full">Event description<textarea name="description" maxlength="10000" placeholder="The experience, the lineup, and what guests should know…">${esc(draft.description)}</textarea></label>${select(
+  root.innerHTML = `<section class="container"><a class="back" href="#">← All events</a><div class="page-head"><div><div class="eyebrow">${draft.id ? "Event workspace" : "Create an event"} / <span class="badge ${locked ? "" : "draft"}">${esc(draft.status || "Private draft")}</span></div><h1>${locked ? esc(draft.name) : draft.id ? "Keep shaping your event." : "Something worth showing up for."}</h1><p>${locked ? "This event is no longer on sale. Booking and payment records are retained." : published ? "Update available seats or change event dates. Booked seats cannot be removed or relabelled." : "Your draft stays private until you publish it."}</p></div><div class="top-actions"><button type="button" data-preview>Preview event</button>${draft.id ? `<a class="primary" href="#operations/${draft.id}">Bookings & entry</a><button data-duplicate>Duplicate as draft</button>${published ? `<a class="primary" style="padding:12px 18px;border-radius:5px;font-size:12px" href="${esc(base)}${draft.slug ? `/events/${encodeURIComponent(draft.slug)}` : `/#event/${draft.id}`}" target="_blank" rel="noopener">View customer page ↗</a>` : ""}` : ""}</div></div><form id="eventForm"><div class="editor-layout"><div><fieldset ${locked ? "disabled" : ""}><section class="panel"><div class="panel-head"><div><h2><small>01</small> The essentials</h2><p>Tell guests what they can look forward to.</p></div></div><div class="fields">${field("Event name", "name", draft.name, "text", 'required maxlength="512"', true)}<label class="full">Event description<textarea name="description" maxlength="10000" placeholder="The experience, the lineup, and what guests should know…">${esc(draft.description)}</textarea></label>${informationFields(draft.information)}<label class="full"><span><input type="checkbox" name="cancellationEnabled" ${draft.cancellationPolicy?.enabled ? "checked" : ""}> Allow full customer cancellations before the cutoff</span></label>${field("Cancellation cutoff (hours before start)", "cancellationCutoffHours", draft.cancellationPolicy?.cutoffHours || 24, "number", 'min="1" max="720"')}<p class="full">Applies to new purchases. Existing orders keep the cancellation deadline promised at checkout. Full order refunds only; provider processing can take time.</p>${select(
     "Event type",
     "category",
     [
@@ -229,6 +229,20 @@ function readPayload() {
     minimumAge: get("minimumAge") ? Number(get("minimumAge")) : null,
     name: get("name"),
     description: get("description"),
+    cancellationPolicy: {
+      enabled: form.has("cancellationEnabled"),
+      cutoffHours: Number(get("cancellationCutoffHours")) || null,
+    },
+    information: Object.fromEntries(
+      [
+        "languages",
+        "artists",
+        "entryInstructions",
+        "accessibilityInfo",
+        "ticketInclusions",
+        "faq",
+      ].map((k) => [k, get(k)]),
+    ),
     category: get("category"),
     admissionMode: get("admissionMode"),
     venueName: get("venueName"),
@@ -395,7 +409,17 @@ function renderPools() {
 function preview() {
   const d = readPayload();
   const dialog = document.getElementById("preview");
-  dialog.innerHTML = `<button type="button" data-close-preview>Close ×</button><div class="eyebrow">Customer preview / not a publication</div>${d.imageUrl ? `<img src="${esc(d.imageUrl)}" alt="Event cover">` : ""}<h2>${esc(d.name || "Your event title")}</h2><p>${esc(d.city)} · ${esc(d.venueName)}<br>${esc(String(d.startTime).replace("T", " "))} · ${esc(d.timezone)}</p><p class="description">${esc(d.description || "Your event description will appear here.")}</p>${d.admissionMode !== "GENERAL" ? mapMarkup() : ""}${d.admissionMode !== "SEATED" ? d.pools.map((p) => `<h3>${esc(p.name)} · ${p.capacity} capacity</h3>${p.tickets.map((t) => `<p>${esc(t.name)} · ${money(t.price)}</p>`).join("")}`).join("") : ""}<p>Published events appear on the customer website. Checkout availability depends on configured payment services.</p>`;
+  dialog.innerHTML = `<button type="button" data-close-preview>Close ×</button><div class="eyebrow">Customer preview / not a publication</div>${d.imageUrl ? `<img src="${esc(d.imageUrl)}" alt="Event cover">` : ""}<h2>${esc(d.name || "Your event title")}</h2><p>${esc(d.city)} · ${esc(d.venueName)}<br>${esc(String(d.startTime).replace("T", " "))} · ${esc(d.timezone)}</p><p class="description">${esc(d.description || "Your event description will appear here.")}</p>${Object.entries(
+    d.information || {},
+  )
+    .filter(([, v]) => v)
+    .map(
+      ([k, v]) =>
+        `<p class="description"><strong>${esc({ languages: "Languages", artists: "Lineup", ticketInclusions: "Ticket inclusions", entryInstructions: "Entry instructions", accessibilityInfo: "Accessibility", faq: "FAQs" }[k] || k)}</strong><br>${esc(v)}</p>`,
+    )
+    .join(
+      "",
+    )}<p>${d.cancellationPolicy?.enabled ? `Full cancellation until ${Number(d.cancellationPolicy.cutoffHours)} hours before start (new purchases).` : "Customer cancellation is not offered."}</p>${d.admissionMode !== "GENERAL" ? mapMarkup() : ""}${d.admissionMode !== "SEATED" ? d.pools.map((p) => `<h3>${esc(p.name)} · ${p.capacity} capacity</h3>${p.tickets.map((t) => `<p>${esc(t.name)} · ${money(t.price)}</p>`).join("")}`).join("") : ""}<p>Published events appear on the customer website. Checkout availability depends on configured payment services.</p>`;
   dialog.showModal();
 }
 async function saveDraft(render = true) {
@@ -421,7 +445,10 @@ async function route() {
   const generation = ++state.routeGeneration;
   if (!state.profile) return;
   const operationsMatch = location.hash.match(/^#operations\/(\d+)$/);
-  if (operationsMatch) { await window.TickItOperations.render(Number(operationsMatch[1])); return; }
+  if (operationsMatch) {
+    await window.TickItOperations.render(Number(operationsMatch[1]));
+    return;
+  }
   if (location.hash === "#new") {
     editor(initialDraft());
     return;
@@ -1018,3 +1045,20 @@ TickItAuth.init()
     if (TickItAuth.user && !state.profile) loadWorkspace();
   })
   .catch((error) => notice(error.message));
+
+function informationFields(info = {}) {
+  const fields = [
+    ["languages", "Languages", 160],
+    ["artists", "Artists / speakers", 1000],
+    ["ticketInclusions", "What your ticket includes", 3000],
+    ["entryInstructions", "Entry instructions / what to bring", 3000],
+    ["accessibilityInfo", "Accessibility information", 1000],
+    ["faq", "Frequently asked questions", 4000],
+  ];
+  return fields
+    .map(
+      ([name, label, max]) =>
+        `<label class="full">${label}<textarea name="${name}" maxlength="${max}" placeholder="Optional — only include confirmed information">${esc(info?.[name])}</textarea></label>`,
+    )
+    .join("");
+}

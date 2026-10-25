@@ -1974,4 +1974,386 @@ class PaymentFlowTest {
             Integer.class,
             id));
   }
+
+  JsonNode confirmedCustomerOrder() throws Exception {
+    var order = create(request(selected(1), null, 0));
+    payment(order, "captured");
+    verify(order);
+    return order;
+  }
+
+  UUID offerTransfer(UUID ticket, AppUser recipient) throws Exception {
+    return UUID.fromString(
+        json.readTree(
+                mvc.perform(
+                        post("/api/tickets/" + ticket + "/transfer")
+                            .with(as(user))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(
+                                json.writeValueAsString(Map.of("email", recipient.getEmail()))))
+                    .andExpect(status().isCreated())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString())
+            .get("id")
+            .asString());
+  }
+
+  void resolveTransfer(UUID id, AppUser actor, String action) throws Exception {
+    mvc.perform(
+            post("/api/account/transfers/" + id)
+                .with(as(actor))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("action", action, "age", 25))))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void savedEventsArePrivateIdempotentAndRequirePublicListings() throws Exception {
+    mvc.perform(put("/api/account/saved-events/" + event.getId()).with(as(user)))
+        .andExpect(status().isOk());
+    mvc.perform(put("/api/account/saved-events/" + event.getId()).with(as(user)))
+        .andExpect(status().isOk());
+    mvc.perform(get("/api/account/saved-events").with(as(user)))
+        .andExpect(jsonPath("$[0]").value(event.getId()));
+    mvc.perform(get("/api/account/saved-events").with(as(other))).andExpect(content().json("[]"));
+    mvc.perform(delete("/api/account/saved-events/" + event.getId()).with(as(other)))
+        .andExpect(status().isOk());
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM saved_event WHERE user_id=?", Integer.class, user.getId()));
+    event.setPublicationStatus("DRAFT");
+    events.saveAndFlush(event);
+    mvc.perform(put("/api/account/saved-events/" + event.getId()).with(as(other)))
+        .andExpect(status().isNotFound());
+    mvc.perform(get("/api/account/saved-events")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void supportRequestsAreOrderOwnedBoundedAndDeveloperResolved() throws Exception {
+    var order = confirmedCustomerOrder();
+    String input =
+        json.writeValueAsString(
+            Map.of(
+                "orderId",
+                order.get("id").asString(),
+                "category",
+                "ENTRY",
+                "message",
+                "Where is the accessible entrance?"));
+    mvc.perform(
+            post("/api/account/support")
+                .with(as(other))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(input))
+        .andExpect(status().isNotFound());
+    UUID id =
+        UUID.fromString(
+            json.readTree(
+                    mvc.perform(
+                            post("/api/account/support")
+                                .with(as(user))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(input))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString())
+                .get("id")
+                .asString());
+    mvc.perform(get("/api/account/support").with(as(other))).andExpect(content().json("[]"));
+    mvc.perform(
+            post("/api/developer/support/" + id + "/reply")
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reply\":\"Use the north entrance.\"}"))
+        .andExpect(status().isForbidden());
+    mvc.perform(
+            post("/api/developer/support/" + id + "/reply")
+                .with(jwt().jwt(j -> j.subject("payment_test_developer")))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reply\":\"Use the north entrance.\"}"))
+        .andExpect(status().isOk());
+    mvc.perform(get("/api/account/support").with(as(user)))
+        .andExpect(jsonPath("$[0].status").value("RESOLVED"))
+        .andExpect(jsonPath("$[0].reply").value("Use the north entrance."));
+    for (int n = 0; n < 4; n++)
+      mvc.perform(
+              post("/api/account/support")
+                  .with(as(user))
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(input))
+          .andExpect(status().isCreated());
+    mvc.perform(
+            post("/api/account/support")
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(input))
+        .andExpect(status().isTooManyRequests());
+  }
+
+  @Test
+  void confirmationResendCreatesFreshIntentWithoutReleasingHeldMail() throws Exception {
+    var order = confirmedCustomerOrder();
+    UUID id = refundOrderId(order);
+    jdbc.update("UPDATE notification_outbox SET status='HELD' WHERE order_id=?", id);
+    mvc.perform(post("/api/account/orders/" + id + "/resend").with(as(other)))
+        .andExpect(status().isNotFound());
+    mvc.perform(post("/api/account/orders/" + id + "/resend").with(as(user)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("QUEUED"));
+    mvc.perform(post("/api/account/orders/" + id + "/resend").with(as(user)))
+        .andExpect(status().isTooManyRequests());
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM notification_outbox WHERE order_id=? AND status='HELD'",
+            Integer.class,
+            id));
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM notification_outbox WHERE order_id=? AND status='QUEUED' AND"
+                + " dedupe_key LIKE 'resend:%'",
+            Integer.class, id));
+    org.mockito.Mockito.verifyNoInteractions(mail);
+  }
+
+  @Test
+  void acceptedTransferRotatesQrAndSeparatesAdmissionFromFinancialOwnership() throws Exception {
+    var order = confirmedCustomerOrder();
+    UUID ticket = firstTicket(order);
+    String original = ticketDetails(ticket, user).get("credential").asString();
+    UUID transfer = offerTransfer(ticket, other);
+    mvc.perform(get("/api/account/transfers").with(as(other)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].minimum_age").value(18))
+        .andExpect(jsonPath("$[0].incoming").value(true));
+    resolveTransfer(transfer, other, "ACCEPT");
+    resolveTransfer(transfer, other, "ACCEPT");
+    mvc.perform(get("/api/tickets/" + ticket).with(as(user))).andExpect(status().isNotFound());
+    String replacement = ticketDetails(ticket, other).get("credential").asString();
+    assertNotEquals(original, replacement);
+    mvc.perform(get("/api/payments/orders/" + order.get("id").asString()).with(as(other)))
+        .andExpect(status().isNotFound());
+    mvc.perform(get("/api/account/received-tickets").with(as(other)))
+        .andExpect(jsonPath("$[0].ticket.id").value(ticket.toString()))
+        .andExpect(jsonPath("$[0].credential").doesNotExist());
+    assertEquals("TRANSFERRED", ticketService.forOrder(refundOrderId(order)).getFirst().status());
+    organizerOwnsFixture();
+    mvc.perform(get("/api/organizer/events/" + event.getId() + "/operations").with(as(user)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.guests[0].email").value(other.getEmail()));
+    entryTime();
+    assertEquals("INVALID", scanCode(original, user).get("outcome").asString());
+    assertEquals("ADMITTED", scanCode(replacement, user).get("outcome").asString());
+    assertEquals("ALREADY_USED", scanCode(replacement, user).get("outcome").asString());
+  }
+
+  @Test
+  void transferRequiresCorrectActorAgeAndUnexpiredOffer() throws Exception {
+    var order = confirmedCustomerOrder();
+    UUID ticket = firstTicket(order), transfer = offerTransfer(ticket, other);
+    mvc.perform(
+            post("/api/account/transfers/" + transfer)
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"ACCEPT\",\"age\":25}"))
+        .andExpect(status().isNotFound());
+    mvc.perform(
+            post("/api/account/transfers/" + transfer)
+                .with(as(other))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"ACCEPT\",\"age\":17}"))
+        .andExpect(status().isBadRequest());
+    jdbc.update(
+        "UPDATE ticket_transfer SET expires_at=clock_timestamp()-interval '1 second' WHERE id=?",
+        transfer);
+    mvc.perform(
+            post("/api/account/transfers/" + transfer)
+                .with(as(other))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"ACCEPT\",\"age\":25}"))
+        .andExpect(status().isConflict());
+    assertNotNull(ticketDetails(ticket, user).get("credential"));
+  }
+
+  @Test
+  void declineAndCancellationDoNotRotateValidQr() throws Exception {
+    var order = confirmedCustomerOrder();
+    UUID ticket = firstTicket(order);
+    String original = ticketDetails(ticket, user).get("credential").asString();
+    UUID first = offerTransfer(ticket, other);
+    resolveTransfer(first, other, "DECLINE");
+    UUID second = offerTransfer(ticket, other);
+    resolveTransfer(second, user, "CANCEL");
+    assertEquals(original, ticketDetails(ticket, user).get("credential").asString());
+    mvc.perform(get("/api/tickets/" + ticket).with(as(other))).andExpect(status().isNotFound());
+  }
+
+  @Test
+  void transferCannotBypassRecipientTicketLimit() throws Exception {
+    var order = confirmedCustomerOrder();
+    UUID ticket = firstTicket(order), transfer = offerTransfer(ticket, other);
+    jdbc.update(
+        "INSERT INTO booking(event_id,seat_id,user_id,status)"
+            + " VALUES(?,?,?,'CONFIRMED'),(?,?,?,'CONFIRMED'),(?,?,?,'CONFIRMED')",
+        event.getId(),
+        rows.get(1).getId(),
+        other.getId(),
+        event.getId(),
+        rows.get(2).getId(),
+        other.getId(),
+        event.getId(),
+        rows.get(3).getId(),
+        other.getId());
+    mvc.perform(
+            post("/api/account/transfers/" + transfer)
+                .with(as(other))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"ACCEPT\",\"age\":25}"))
+        .andExpect(status().isConflict());
+    assertNotNull(ticketDetails(ticket, user).get("credential"));
+  }
+
+  @Test
+  void customerCancellationSnapshotsPolicyQueuesOneFullRefundAndInvalidatesQr() throws Exception {
+    event.setCancellationCutoffHours(24);
+    event = events.saveAndFlush(event);
+    var order = confirmedCustomerOrder();
+    UUID id = refundOrderId(order), ticket = firstTicket(order);
+    assertNotNull(
+        jdbc.queryForObject(
+            "SELECT cancellation_deadline FROM checkout_order WHERE id=?",
+            java.sql.Timestamp.class,
+            id));
+    event.setCancellationCutoffHours(null);
+    events.saveAndFlush(event);
+    mvc.perform(post("/api/account/orders/" + id + "/cancel").with(as(other)))
+        .andExpect(status().isNotFound());
+    mvc.perform(post("/api/account/orders/" + id + "/cancel").with(as(user)))
+        .andExpect(status().isOk());
+    mvc.perform(post("/api/account/orders/" + id + "/cancel").with(as(user)))
+        .andExpect(status().isOk());
+    assertEquals("CUSTOMER_CANCELLED", refunds.summary(id).reason());
+    assertEquals(order.get("amount").asLong(), refunds.summary(id).amount());
+    assertTrue(ticketDetails(ticket, user).get("credential").isNull());
+    org.mockito.Mockito.verify(gateway, never()).createRefund(anyString(), anyLong(), any());
+  }
+
+  @Test
+  void noPolicyOrExpiredDeadlineCannotCancelAnOrder() throws Exception {
+    var order = confirmedCustomerOrder();
+    UUID id = refundOrderId(order);
+    mvc.perform(post("/api/account/orders/" + id + "/cancel").with(as(user)))
+        .andExpect(status().isConflict());
+    jdbc.update(
+        "UPDATE checkout_order SET cancellation_deadline=clock_timestamp()-interval '1 second'"
+            + " WHERE id=?",
+        id);
+    mvc.perform(post("/api/account/orders/" + id + "/cancel").with(as(user)))
+        .andExpect(status().isConflict());
+    assertNull(refunds.summary(id));
+  }
+
+  @Test
+  void transferredOrderCannotBeCancelledByPurchaser() throws Exception {
+    event.setCancellationCutoffHours(24);
+    event = events.saveAndFlush(event);
+    var order = confirmedCustomerOrder();
+    UUID transfer = offerTransfer(firstTicket(order), other);
+    resolveTransfer(transfer, other, "ACCEPT");
+    mvc.perform(post("/api/account/orders/" + refundOrderId(order) + "/cancel").with(as(user)))
+        .andExpect(status().isConflict());
+    assertNull(refunds.summary(refundOrderId(order)));
+  }
+
+  @Test
+  void concurrentAcceptanceIsIdempotentAndOnlyOneReplacementQrIsIssued() throws Exception {
+    var order = confirmedCustomerOrder();
+    UUID ticket = firstTicket(order), transfer = offerTransfer(ticket, other);
+    var pool = Executors.newFixedThreadPool(2);
+    var start = new CountDownLatch(1);
+    try {
+      var jobs = new ArrayList<Future<?>>();
+      for (int n = 0; n < 2; n++)
+        jobs.add(
+            pool.submit(
+                () -> {
+                  start.await();
+                  resolveTransfer(transfer, other, "ACCEPT");
+                  return null;
+                }));
+      start.countDown();
+      for (var job : jobs) job.get(10, TimeUnit.SECONDS);
+    } finally {
+      pool.shutdownNow();
+    }
+    assertEquals(
+        1,
+        jdbc.queryForObject(
+            "SELECT count(*) FROM ticket_transfer WHERE id=? AND status='ACCEPTED'",
+            Integer.class,
+            transfer));
+    assertEquals(
+        other.getId(),
+        jdbc.queryForObject(
+            "SELECT holder_id FROM admission_ticket WHERE id=?", Long.class, ticket));
+    assertEquals(1, ticketService.forOrder(refundOrderId(order)).size());
+  }
+
+  @Test
+  void usedAdmissionCannotBeTransferredOrCustomerCancelled() throws Exception {
+    event.setCancellationCutoffHours(1);
+    event = events.saveAndFlush(event);
+    organizerOwnsFixture();
+    var order = confirmedCustomerOrder();
+    UUID id = refundOrderId(order), ticket = firstTicket(order);
+    entryTime();
+    assertEquals("ADMITTED", scanTicket(ticket, user).get("outcome").asString());
+    mvc.perform(
+            post("/api/tickets/" + ticket + "/transfer")
+                .with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("email", other.getEmail()))))
+        .andExpect(status().isConflict());
+    mvc.perform(post("/api/account/orders/" + id + "/cancel").with(as(user)))
+        .andExpect(status().isConflict());
+    assertNull(refunds.summary(id));
+  }
+
+  @Test
+  void cancelledEventInvalidatesReceivedAdmissionAndCanBeHiddenByRecipient() throws Exception {
+    var order = confirmedCustomerOrder();
+    UUID ticket = firstTicket(order);
+    resolveTransfer(offerTransfer(ticket, other), other, "ACCEPT");
+    event.setPublicationStatus("CANCELLED");
+    events.saveAndFlush(event);
+    refunds.enqueueEligible(event.getId());
+    assertTrue(ticketDetails(ticket, other).get("credential").isNull());
+    mvc.perform(delete("/api/bookings/events/" + event.getId() + "/dashboard").with(as(other)))
+        .andExpect(status().isOk());
+    mvc.perform(get("/api/account/received-tickets").with(as(other)))
+        .andExpect(content().json("[]"));
+    assertTrue(ticketService.forOrder(refundOrderId(order)).getFirst().status().equals("INACTIVE"));
+    assertNotNull(refunds.summary(refundOrderId(order)));
+  }
+
+  @Test
+  void acceptedAdmissionCountsAgainstRecipientFuturePurchases() throws Exception {
+    var order = confirmedCustomerOrder();
+    UUID ticket = firstTicket(order);
+    resolveTransfer(offerTransfer(ticket, other), other, "ACCEPT");
+    assertEquals(1, bookings.countAllTickets(other.getId(), event.getId()));
+    assertEquals(1, bookings.countAllTickets(user.getId(), event.getId()));
+    mvc.perform(
+            post("/api/payments/orders")
+                .with(as(other))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    json.writeValueAsString(
+                        request(rows.subList(1, 4).stream().map(Seat::getId).toList(), null, 0))))
+        .andExpect(status().isConflict());
+  }
 }

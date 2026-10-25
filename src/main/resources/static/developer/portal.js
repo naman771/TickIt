@@ -56,8 +56,14 @@ function render(section) {
     payments: "Payments",
     email: "Email delivery",
     testing: "Pipeline testing",
+    support: "Customer support",
   };
   document.getElementById("pageLabel").textContent = titles[section];
+  if (section === "support") {
+    content.innerHTML = `<div class="section-title"><div><div class="eyebrow">CUSTOMER CARE</div><h1>Customer support</h1><p>Requests linked to account-owned orders. Replies appear in the customer’s My tickets dashboard.</p></div></div><section class="panel" id="supportQueue">Loading requests…</section>`;
+    loadSupportQueue();
+    return;
+  }
   if (section === "testing") {
     content.innerHTML = `<div class="section-title"><div><div class="eyebrow">CONTROLLED CONTENTION</div><h1>Pipeline testing</h1><p>Run concurrent bot attempts against isolated diagnostic data.</p></div></div><section class="panel"><h2>Component stress check</h2><p>Tests the real Redis hold script, PostgreSQL uniqueness and version conflicts, and atomic token bucket. Uses four workers and up to 32 attempts per check. One run per minute.</p><p>Diagnostic records are isolated from your catalog and bookings. This checks component invariants; it does not simulate browser traffic, payment capture, WebSocket delivery or prove production load capacity.</p><form id="diagnosticForm"><label>Attempts per check <input name="attempts" type="number" min="8" max="32" value="16" required></label> <button class="refresh" type="submit">Run bot test</button></form><div id="diagnosticResult" role="status" aria-live="polite">Loading latest result…</div></section>`;
     loadDiagnostics();
@@ -125,7 +131,10 @@ function render(section) {
   const d = details[section];
   content.innerHTML = `<div class="section-title"><div><div class="eyebrow">INTEGRATIONS / ${d.provider.toUpperCase()}</div><h1>${d.title}</h1></div>${badge(d.ready)}</div><div class="integration-detail"><section class="panel"><h2>${d.provider}</h2><p>${d.copy}</p><ul>${d.items.map((item) => `<li>${item}</li>`).join("")}</ul><a class="doc-link" href="${d.href}" target="_blank" rel="noopener">${d.label} ↗</a></section></div>`;
   if (section === "email") {
-    content.insertAdjacentHTML("beforeend",'<section class="panel"><h2>Delivery queue</h2><div id="notificationQueue" role="status">Loading delivery status…</div></section>');
+    content.insertAdjacentHTML(
+      "beforeend",
+      '<section class="panel"><h2>Delivery queue</h2><div id="notificationQueue" role="status">Loading delivery status…</div></section>',
+    );
     loadNotificationQueue();
   }
   if (section === "payments") {
@@ -152,7 +161,7 @@ async function loadRefunds() {
       ? rows
           .map(
             (r) =>
-              `<div class="status-row"><div><strong>${escapeHtml(r.order_id.slice(0, 8))}</strong><p>${escapeHtml(r.reason.replaceAll("_", " "))} · ${escapeHtml(r.currency)} ${(Number(r.amount) / 100).toFixed(2)}</p>${r.last_error ? `<small>${escapeHtml(r.last_error)}</small>` : ""}<p><button data-refund-inspect="${escapeHtml(r.order_id)}">Check provider status</button>${["FAILED","REVIEW"].includes(r.status)?` <button data-refund-retry="${escapeHtml(r.order_id)}">Retry after resolution</button>`:""}</p></div><span class="badge ${["FAILED", "REVIEW"].includes(r.status) ? "pending" : ""}">${escapeHtml(r.status)}</span></div>`,
+              `<div class="status-row"><div><strong>${escapeHtml(r.order_id.slice(0, 8))}</strong><p>${escapeHtml(r.reason.replaceAll("_", " "))} · ${escapeHtml(r.currency)} ${(Number(r.amount) / 100).toFixed(2)}</p>${r.last_error ? `<small>${escapeHtml(r.last_error)}</small>` : ""}<p><button data-refund-inspect="${escapeHtml(r.order_id)}">Check provider status</button>${["FAILED", "REVIEW"].includes(r.status) ? ` <button data-refund-retry="${escapeHtml(r.order_id)}">Retry after resolution</button>` : ""}</p></div><span class="badge ${["FAILED", "REVIEW"].includes(r.status) ? "pending" : ""}">${escapeHtml(r.status)}</span></div>`,
           )
           .join("")
       : "No refunds have been requested.";
@@ -312,41 +321,162 @@ document.addEventListener("submit", (event) => {
 });
 
 async function loadNotificationQueue() {
-  const node=document.getElementById("notificationQueue"),user=TickItAuth.user?.id;
+  const node = document.getElementById("notificationQueue"),
+    user = TickItAuth.user?.id;
   try {
-    const response=await fetch("/api/developer/notifications",{headers:{Authorization:`Bearer ${await TickItAuth.token()}`}});
-    if(!response.ok)throw new Error("Delivery status is unavailable.");
-    const data=await response.json();if(!node?.isConnected||TickItAuth.user?.id!==user)return;
-    node.innerHTML=`<p>${data.deliveryEnabled?"Mail transport enabled.":"Delivery disabled. Messages remain queued; no emails are marked sent."}</p><div>${data.counts.map(r=>`<div class="status-row"><span>${escapeHtml(r.status)}</span><strong>${Number(r.total)}</strong></div>`).join("")||"No notification jobs yet."}</div><p>${data.restrictedRecipients ? `Delivery is restricted to ${Number(data.restrictedRecipients)} configured recipient(s).` : "No recipient restriction is configured."}</p><h3>Recent jobs</h3>${data.recent.map(r=>`<div class="status-row"><div>${escapeHtml(r.kind)} · ${Number(r.attempts)} attempts${r.recipient?`<small> · ${escapeHtml(r.recipient)}</small>`:""}${["HELD","QUEUED","RETRY","FAILED"].includes(r.status)?`<p>${r.status==="HELD"?`<button data-notification-review="RELEASE" data-notification-id="${escapeHtml(r.id)}">Release reviewed message</button> `:""}${r.status==="FAILED"?`<button data-notification-review="RETRY" data-notification-id="${escapeHtml(r.id)}">Retry failed message</button> `:""}<button data-notification-review="SUPPRESS" data-notification-id="${escapeHtml(r.id)}">Suppress message</button></p>`:""}${r.last_error?`<p>${escapeHtml(r.last_error)}</p>`:""}</div><span class="badge ${r.status==="FAILED"?"pending":""}">${escapeHtml(r.status)}</span></div>`).join("")}`;
-  }catch(error){if(node?.isConnected&&TickItAuth.user?.id===user)node.textContent=error.message;}
+    const response = await fetch("/api/developer/notifications", {
+      headers: { Authorization: `Bearer ${await TickItAuth.token()}` },
+    });
+    if (!response.ok) throw new Error("Delivery status is unavailable.");
+    const data = await response.json();
+    if (!node?.isConnected || TickItAuth.user?.id !== user) return;
+    node.innerHTML = `<p>${data.deliveryEnabled ? "Mail transport enabled." : "Delivery disabled. Messages remain queued; no emails are marked sent."}</p><div>${data.counts.map((r) => `<div class="status-row"><span>${escapeHtml(r.status)}</span><strong>${Number(r.total)}</strong></div>`).join("") || "No notification jobs yet."}</div><p>${data.restrictedRecipients ? `Delivery is restricted to ${Number(data.restrictedRecipients)} configured recipient(s).` : "No recipient restriction is configured."}</p><h3>Recent jobs</h3>${data.recent.map((r) => `<div class="status-row"><div>${escapeHtml(r.kind)} · ${Number(r.attempts)} attempts${r.recipient ? `<small> · ${escapeHtml(r.recipient)}</small>` : ""}${["HELD", "QUEUED", "RETRY", "FAILED"].includes(r.status) ? `<p>${r.status === "HELD" ? `<button data-notification-review="RELEASE" data-notification-id="${escapeHtml(r.id)}">Release reviewed message</button> ` : ""}${r.status === "FAILED" ? `<button data-notification-review="RETRY" data-notification-id="${escapeHtml(r.id)}">Retry failed message</button> ` : ""}<button data-notification-review="SUPPRESS" data-notification-id="${escapeHtml(r.id)}">Suppress message</button></p>` : ""}${r.last_error ? `<p>${escapeHtml(r.last_error)}</p>` : ""}</div><span class="badge ${r.status === "FAILED" ? "pending" : ""}">${escapeHtml(r.status)}</span></div>`).join("")}`;
+  } catch (error) {
+    if (node?.isConnected && TickItAuth.user?.id === user)
+      node.textContent = error.message;
+  }
 }
 
-document.addEventListener("click",async(event)=>{
-  const inspect=event.target.closest("[data-refund-inspect]"), retry=event.target.closest("[data-refund-retry]");
-  const button=inspect||retry;if(!button)return;
-  const user=TickItAuth.user?.id;let reason;
-  if(retry){reason=window.prompt("What provider/account issue was resolved? This retries the original full refund; it does not create a new refund key.");if(!reason?.trim())return;if(reason.length>500){window.alert("Use a reason of up to 500 characters.");return;}}
-  button.disabled=true;
-  try{
-    const id=inspect?button.dataset.refundInspect:button.dataset.refundRetry;
-    const response=await fetch(`/api/developer/payments/refunds/${encodeURIComponent(id)}/${inspect?"inspect":"retry"}`,{method:"POST",headers:{Authorization:`Bearer ${await TickItAuth.token()}`,"Content-Type":"application/json"},...(retry?{body:JSON.stringify({reason})}:{})});
-    const data=await response.json();if(TickItAuth.user?.id!==user)return;
-    if(!response.ok)throw new Error(data.error||"Refund operation failed.");
-    if(inspect)window.alert(`Provider payment: ${data.providerPaymentStatus}. Refunded: ${(data.amountRefunded/100).toFixed(2)} INR. Refund record: ${data.refund.status}.`);
+document.addEventListener("click", async (event) => {
+  const inspect = event.target.closest("[data-refund-inspect]"),
+    retry = event.target.closest("[data-refund-retry]");
+  const button = inspect || retry;
+  if (!button) return;
+  const user = TickItAuth.user?.id;
+  let reason;
+  if (retry) {
+    reason = window.prompt(
+      "What provider/account issue was resolved? This retries the original full refund; it does not create a new refund key.",
+    );
+    if (!reason?.trim()) return;
+    if (reason.length > 500) {
+      window.alert("Use a reason of up to 500 characters.");
+      return;
+    }
+  }
+  button.disabled = true;
+  try {
+    const id = inspect
+      ? button.dataset.refundInspect
+      : button.dataset.refundRetry;
+    const response = await fetch(
+      `/api/developer/payments/refunds/${encodeURIComponent(id)}/${inspect ? "inspect" : "retry"}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${await TickItAuth.token()}`,
+          "Content-Type": "application/json",
+        },
+        ...(retry ? { body: JSON.stringify({ reason }) } : {}),
+      },
+    );
+    const data = await response.json();
+    if (TickItAuth.user?.id !== user) return;
+    if (!response.ok) throw new Error(data.error || "Refund operation failed.");
+    if (inspect)
+      window.alert(
+        `Provider payment: ${data.providerPaymentStatus}. Refunded: ${(data.amountRefunded / 100).toFixed(2)} INR. Refund record: ${data.refund.status}.`,
+      );
     await loadRefunds();
-  }catch(error){if(TickItAuth.user?.id===user)window.alert(error.message);}finally{if(button.isConnected)button.disabled=false;}
+  } catch (error) {
+    if (TickItAuth.user?.id === user) window.alert(error.message);
+  } finally {
+    if (button.isConnected) button.disabled = false;
+  }
 });
 
-document.addEventListener("click",async event=>{
-  const button=event.target.closest("[data-notification-review]");if(!button)return;
-  const user=TickItAuth.user?.id;
-  const reason=window.prompt(button.dataset.notificationReview==="RETRY"?"Why is this failed notification ready to retry?":button.dataset.notificationReview==="RELEASE"?"Confirm why this held historical message should now be sent.":"Why should this queued message be suppressed? Booking and payment records are preserved.");
-  if(!reason?.trim())return;if(reason.length>500){window.alert("Use up to 500 characters.");return;}
-  button.disabled=true;
-  try{
-    const response=await fetch(`/api/developer/notifications/${encodeURIComponent(button.dataset.notificationId)}/review`,{method:"POST",headers:{Authorization:`Bearer ${await TickItAuth.token()}`,"Content-Type":"application/json"},body:JSON.stringify({action:button.dataset.notificationReview,reason})});
-    const data=await response.json();if(TickItAuth.user?.id!==user)return;
-    if(!response.ok)throw new Error(data.error||"Notification review could not be recorded.");
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-notification-review]");
+  if (!button) return;
+  const user = TickItAuth.user?.id;
+  const reason = window.prompt(
+    button.dataset.notificationReview === "RETRY"
+      ? "Why is this failed notification ready to retry?"
+      : button.dataset.notificationReview === "RELEASE"
+        ? "Confirm why this held historical message should now be sent."
+        : "Why should this queued message be suppressed? Booking and payment records are preserved.",
+  );
+  if (!reason?.trim()) return;
+  if (reason.length > 500) {
+    window.alert("Use up to 500 characters.");
+    return;
+  }
+  button.disabled = true;
+  try {
+    const response = await fetch(
+      `/api/developer/notifications/${encodeURIComponent(button.dataset.notificationId)}/review`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${await TickItAuth.token()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: button.dataset.notificationReview,
+          reason,
+        }),
+      },
+    );
+    const data = await response.json();
+    if (TickItAuth.user?.id !== user) return;
+    if (!response.ok)
+      throw new Error(
+        data.error || "Notification review could not be recorded.",
+      );
     await loadNotificationQueue();
-  }catch(error){if(TickItAuth.user?.id===user)window.alert(error.message);}finally{if(button.isConnected)button.disabled=false;}
+  } catch (error) {
+    if (TickItAuth.user?.id === user) window.alert(error.message);
+  } finally {
+    if (button.isConnected) button.disabled = false;
+  }
+});
+
+async function loadSupportQueue() {
+  const box = document.getElementById("supportQueue");
+  if (!box) return;
+  try {
+    const response = await fetch("/api/developer/support", {
+      headers: { Authorization: `Bearer ${await TickItAuth.token()}` },
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error("Support queue is unavailable.");
+    const rows = await response.json();
+    if (!box.isConnected) return;
+    box.innerHTML = rows.length
+      ? rows
+          .map(
+            (r) =>
+              `<article class="panel"><strong>${escapeHtml(r.category)} · ${escapeHtml(r.status)}</strong><p>Order ${escapeHtml(r.order_id)}</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(r.message)}</p>${r.reply ? `<p><strong>Reply</strong><br>${escapeHtml(r.reply)}</p>` : ""}<form data-support-reply="${escapeHtml(r.id)}"><label>Reply<textarea name="reply" required maxlength="3000" style="display:block;width:100%;min-height:100px">${escapeHtml(r.reply || "")}</textarea></label><button type="submit" class="refresh">Reply & resolve</button></form></article>`,
+          )
+          .join("")
+      : "No support requests.";
+  } catch (error) {
+    if (box.isConnected) box.textContent = error.message;
+  }
+}
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-support-reply]");
+  if (!form) return;
+  event.preventDefault();
+  const button = form.querySelector("button");
+  button.disabled = true;
+  try {
+    const response = await fetch(
+      `/api/developer/support/${encodeURIComponent(form.dataset.supportReply)}/reply`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${await TickItAuth.token()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ reply: new FormData(form).get("reply") }),
+      },
+    );
+    if (!response.ok) throw new Error("Reply could not be saved.");
+    await loadSupportQueue();
+  } catch (error) {
+    window.alert(error.message);
+  } finally {
+    button.disabled = false;
+  }
 });

@@ -30,7 +30,20 @@ public record OrganizerEventRequest(
     LocalDateTime salesEnd,
     @Min(1) @Max(3) int perOrderLimit,
     @Min(1) @Max(120) Integer minimumAge,
-    @Size(max = 1000) String changeReason) {
+    @Size(max = 1000) String changeReason,
+    @Valid Information information,
+    @Valid CancellationPolicy cancellationPolicy) {
+  public record CancellationPolicy(
+      @NotNull Boolean enabled, @Min(1) @Max(720) Integer cutoffHours) {}
+
+  public record Information(
+      @Size(max = 160) String languages,
+      @Size(max = 1000) String artists,
+      @Size(max = 3000) String entryInstructions,
+      @Size(max = 1000) String accessibilityInfo,
+      @Size(max = 3000) String ticketInclusions,
+      @Size(max = 4000) String faq) {}
+
   public record SeatInput(
       @Positive Long id,
       @NotBlank @Size(max = 40) String section,

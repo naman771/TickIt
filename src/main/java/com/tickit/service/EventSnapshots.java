@@ -17,6 +17,7 @@ public class EventSnapshots {
       String slug,
       LocalDateTime startTime,
       Instant startInstant,
+      Instant endInstant,
       String timezone,
       String status,
       String changeNote,
@@ -40,6 +41,12 @@ public class EventSnapshots {
               r.getString("slug"),
               start,
               start.atZone(ZoneId.of(zone)).toInstant(),
+              r.getTimestamp("end_time") == null
+                  ? null
+                  : r.getTimestamp("end_time")
+                      .toLocalDateTime()
+                      .atZone(ZoneId.of(zone))
+                      .toInstant(),
               zone,
               r.getString("publication_status"),
               r.getString("change_note"),

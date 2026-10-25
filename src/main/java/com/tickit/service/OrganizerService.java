@@ -93,6 +93,18 @@ public class OrganizerService {
     event.setCurrency("INR");
     event.setName(input.name().trim());
     event.setDescription(input.description());
+    applyInformation(event, input.information());
+    if (input.cancellationPolicy() != null) {
+      if (Boolean.TRUE.equals(input.cancellationPolicy().enabled())
+          && input.cancellationPolicy().cutoffHours() == null)
+        throw new org.springframework.web.server.ResponseStatusException(
+            org.springframework.http.HttpStatus.BAD_REQUEST,
+            "Choose a cancellation cutoff between 1 and 720 hours");
+      event.setCancellationCutoffHours(
+          Boolean.TRUE.equals(input.cancellationPolicy().enabled())
+              ? input.cancellationPolicy().cutoffHours()
+              : null);
+    }
     event.setCategory(input.category());
     event.setAdmissionMode(input.admissionMode());
     event.setCity(input.city().trim());
@@ -252,6 +264,18 @@ public class OrganizerService {
     }
     event.setName(input.name().trim());
     event.setDescription(input.description());
+    applyInformation(event, input.information());
+    if (input.cancellationPolicy() != null) {
+      if (Boolean.TRUE.equals(input.cancellationPolicy().enabled())
+          && input.cancellationPolicy().cutoffHours() == null)
+        throw new org.springframework.web.server.ResponseStatusException(
+            org.springframework.http.HttpStatus.BAD_REQUEST,
+            "Choose a cancellation cutoff between 1 and 720 hours");
+      event.setCancellationCutoffHours(
+          Boolean.TRUE.equals(input.cancellationPolicy().enabled())
+              ? input.cancellationPolicy().cutoffHours()
+              : null);
+    }
     event.setCategory(input.category());
     event.setCity(input.city().trim());
     event.setStartTime(input.startTime());
@@ -351,7 +375,11 @@ public class OrganizerService {
         next,
         e.getTimezone(),
         timezone);
-    Long change = jdbc.queryForObject("SELECT id FROM event_change WHERE event_id=? ORDER BY id DESC LIMIT 1", Long.class,e.getId());
+    Long change =
+        jdbc.queryForObject(
+            "SELECT id FROM event_change WHERE event_id=? ORDER BY id DESC LIMIT 1",
+            Long.class,
+            e.getId());
     notifications.eventChange(change);
   }
 
@@ -459,6 +487,17 @@ public class OrganizerService {
     return view(event);
   }
 
+  private void applyInformation(Event event, OrganizerEventRequest.Information info) {
+    // Older editor clients omit this object; preserve existing optional information.
+    if (info == null) return;
+    event.setLanguages(info.languages());
+    event.setArtists(info.artists());
+    event.setEntryInstructions(info.entryInstructions());
+    event.setAccessibilityInfo(info.accessibilityInfo());
+    event.setTicketInclusions(info.ticketInclusions());
+    event.setFaq(info.faq());
+  }
+
   private Map<String, Object> view(Event e) {
     var venue = venues.findByEventId(e.getId()).stream().findFirst().orElse(null);
     Map<String, Object> data = new LinkedHashMap<>();
@@ -466,6 +505,15 @@ public class OrganizerService {
     data.put("name", e.getName());
     data.put("slug", e.getSlug());
     data.put("description", e.getDescription());
+    data.put(
+        "information",
+        new OrganizerEventRequest.Information(
+            e.getLanguages(),
+            e.getArtists(),
+            e.getEntryInstructions(),
+            e.getAccessibilityInfo(),
+            e.getTicketInclusions(),
+            e.getFaq()));
     data.put("category", e.getCategory());
     data.put("admissionMode", e.getAdmissionMode());
     data.put("status", e.getPublicationStatus());
@@ -477,6 +525,13 @@ public class OrganizerService {
     data.put("salesEnd", e.getSalesEnd());
     data.put("perOrderLimit", Math.min(3, e.getPerOrderLimit()));
     data.put("minimumAge", e.getMinimumAge());
+    data.put(
+        "cancellationPolicy",
+        Map.of(
+            "enabled",
+            e.getCancellationCutoffHours() != null,
+            "cutoffHours",
+            e.getCancellationCutoffHours() == null ? 24 : e.getCancellationCutoffHours()));
     data.put("startTime", e.getStartTime());
     data.put("endTime", e.getEndTime());
     data.put("timezone", e.getTimezone());

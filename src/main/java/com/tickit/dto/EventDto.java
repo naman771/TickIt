@@ -9,6 +9,9 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class EventDto {
+  private OrganizerEventRequest.Information information;
+  private String organizerName;
+  private java.time.Instant endInstant;
   private Long version;
   private String status;
   private String changeNote;
@@ -17,6 +20,7 @@ public class EventDto {
   private int availableTickets;
   private int perOrderLimit;
   private Integer minimumAge;
+  private Integer cancellationCutoffHours;
   private String currency;
   private String category;
   private String timezone;

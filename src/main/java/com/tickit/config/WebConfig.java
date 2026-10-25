@@ -18,6 +18,8 @@ public class WebConfig implements WebMvcConfigurer {
         .addInterceptor(rateLimiterInterceptor)
         .addPathPatterns(
             "/api/bookings/**",
+            "/api/account/**",
+            "/api/developer/support/**",
             "/api/tickets/**",
             "/api/entry/**",
             "/api/developer/payments/**",

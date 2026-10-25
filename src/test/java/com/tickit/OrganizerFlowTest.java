@@ -802,4 +802,57 @@ class OrganizerFlowTest {
       assertThat(a.get(10, TimeUnit.SECONDS)).isNotEqualTo(b.get(10, TimeUnit.SECONDS));
     }
   }
+
+  @Test
+  void richInformationRoundTripsAndOlderEditorsPreserveIt() throws Exception {
+    var p = payload("SEATED");
+    p.put(
+        "information",
+        Map.of(
+            "languages",
+            "Hindi, English",
+            "artists",
+            "Independent performers",
+            "entryInstructions",
+            "Bring ID",
+            "ticketInclusions",
+            "Admission and a seat",
+            "accessibilityInfo",
+            "Step-free entrance on Park Road",
+            "faq",
+            "Can I bring a bag? Small bags only."));
+    p.put("cancellationPolicy", Map.of("enabled", true, "cutoffHours", 24));
+    var draft = organizer.save(null, request(p));
+    long id = id(draft);
+    var saved = events.findById(id).orElseThrow();
+    assertThat(saved.getLanguages()).isEqualTo("Hindi, English");
+    assertThat(saved.getCancellationCutoffHours()).isEqualTo(24);
+    var update = payload("SEATED");
+    update.put("version", draft.get("version"));
+    organizer.save(id, request(update));
+    assertThat(events.findById(id).orElseThrow().getTicketInclusions())
+        .isEqualTo("Admission and a seat");
+    var currentDraft = organizer.get(id);
+    organizer.publish(id, ((Number) currentDraft.get("version")).longValue());
+    mvc.perform(get("/api/events/" + id))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.information.languages").value("Hindi, English"))
+        .andExpect(jsonPath("$.organizerName").value("Independent Organizer"))
+        .andExpect(jsonPath("$.cancellationCutoffHours").value(24));
+    mvc.perform(get("/events/" + events.findById(id).orElseThrow().getSlug() + "/book"))
+        .andExpect(status().isOk())
+        .andExpect(forwardedUrl("/index.html"));
+  }
+
+  @Test
+  void eventInformationCannotExceedItsBoundedFields() throws Exception {
+    var p = payload("SEATED");
+    p.put("information", Map.of("languages", "x".repeat(161)));
+    mvc.perform(
+            post("/api/organizer/events")
+                .with(jwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(p)))
+        .andExpect(status().isBadRequest());
+  }
 }

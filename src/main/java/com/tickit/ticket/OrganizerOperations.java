@@ -71,9 +71,9 @@ public class OrganizerOperations {
         "SELECT t.id,t.ordinal,i.label,o.id order_id,u.full_name,u.email,t.checked_in_at, o.status"
             + " order_status,e.publication_status event_status,r.status refund_status FROM"
             + " admission_ticket t JOIN checkout_item i ON i.id=t.item_id JOIN checkout_order o ON"
-            + " o.id=i.order_id JOIN app_user u ON u.id=o.user_id JOIN event e ON e.id=o.event_id"
-            + " LEFT JOIN refund_job r ON r.order_id=o.id WHERE o.event_id=? ORDER BY"
-            + " i.id,t.ordinal LIMIT 100 OFFSET ?",
+            + " o.id=i.order_id JOIN app_user u ON u.id=COALESCE(t.holder_id,o.user_id) JOIN event"
+            + " e ON e.id=o.event_id LEFT JOIN refund_job r ON r.order_id=o.id WHERE o.event_id=?"
+            + " ORDER BY i.id,t.ordinal LIMIT 100 OFFSET ?",
         event,
         page * 100);
   }

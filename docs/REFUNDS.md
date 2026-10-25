@@ -1,6 +1,6 @@
 # Automatic full refunds
 
-TickIt queues the full captured checkout amount when an organizer cancels or deletes an event, or when a verified captured payment cannot issue tickets. Cancellation preserves financial history. Rescheduling preserves confirmed tickets and does not automatically refund them; a capture against an expired pre-reschedule checkout is refunded because no ticket was issued.
+TickIt queues the full captured checkout amount when an organizer cancels or deletes an event, or when a verified captured payment cannot issue tickets. Eligible purchase-time customer cancellation policies also queue one full-order refund. See [customer cancellation](CUSTOMER_EXPERIENCE.md#customer-cancellation). Cancellation preserves financial history. Rescheduling preserves confirmed tickets and does not automatically refund them; a capture against an expired pre-reschedule checkout is refunded because no ticket was issued.
 
 The implementation remains test-mode only. Existing Razorpay test keys are used; no additional service, paid plan or dependency is required. No payment details are collected or stored by TickIt.
 

@@ -29,6 +29,24 @@ public class Event {
   @Column(columnDefinition = "TEXT")
   private String description;
 
+  @Column(name = "languages", length = 160)
+  private String languages;
+
+  @Column(name = "artists", length = 1000)
+  private String artists;
+
+  @Column(name = "entry_instructions", length = 3000)
+  private String entryInstructions;
+
+  @Column(name = "accessibility_info", length = 1000)
+  private String accessibilityInfo;
+
+  @Column(name = "ticket_inclusions", length = 3000)
+  private String ticketInclusions;
+
+  @Column(name = "faq", length = 4000)
+  private String faq;
+
   @Column(name = "start_time", nullable = false)
   private LocalDateTime startTime;
 
@@ -85,6 +103,8 @@ public class Event {
 
   @Column(name = "minimum_age")
   private Integer minimumAge;
+
+  private Integer cancellationCutoffHours;
 
   @Column(name = "guest_capacity", nullable = false)
   private int guestCapacity;

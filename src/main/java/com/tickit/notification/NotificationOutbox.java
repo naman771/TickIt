@@ -47,6 +47,14 @@ public class NotificationOutbox {
   }
 
   public void booking(UUID order) {
+    booking(order, "booking:" + order);
+  }
+
+  public void resend(UUID order, UUID request) {
+    booking(order, "resend:" + request);
+  }
+
+  private void booking(UUID order, String dedupe) {
     var rows =
         jdbc.queryForList(
             "SELECT o.user_id,o.event_id,e.name FROM checkout_order o JOIN event e ON"
@@ -55,7 +63,7 @@ public class NotificationOutbox {
             order);
     for (var row : rows)
       enqueue(
-          "booking:" + order,
+          dedupe,
           ((Number) row.get("user_id")).longValue(),
           ((Number) row.get("event_id")).longValue(),
           order,

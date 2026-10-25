@@ -207,8 +207,8 @@ public class CheckoutService {
                     409, "Your reservation is about to expire. Release it and choose again");
               jdbc.update(
                   "INSERT INTO"
-                      + " checkout_order(id,user_id,event_id,idempotency_key,request_fingerprint,status,amount,currency,admission_hold_id,expires_at,event_revision)"
-                      + " VALUES(?,?,?,?,?,'CREATING',?,'INR',?,?,?)",
+                      + " checkout_order(id,user_id,event_id,idempotency_key,request_fingerprint,status,amount,currency,admission_hold_id,expires_at,event_revision,cancellation_deadline)"
+                      + " VALUES(?,?,?,?,?,'CREATING',?,'INR',?,?,?,?)",
                   id,
                   user.getId(),
                   event.getId(),
@@ -217,7 +217,15 @@ public class CheckoutService {
                   amount,
                   admissionId,
                   java.sql.Timestamp.from(deadline),
-                  event.getLayoutVersion());
+                  event.getLayoutVersion(),
+                  event.getCancellationCutoffHours() == null
+                      ? null
+                      : java.sql.Timestamp.from(
+                          event
+                              .getStartTime()
+                              .atZone(java.time.ZoneId.of(event.getTimezone()))
+                              .toInstant()
+                              .minusSeconds(event.getCancellationCutoffHours() * 3600L)));
               for (var item : items)
                 jdbc.update(
                     "INSERT INTO"
@@ -512,6 +520,12 @@ public class CheckoutService {
     result.put("event", eventSnapshots.get(order.eventId()));
     result.put("status", status);
     result.put("refund", refunds.summary(order.id()));
+    result.put(
+        "cancellationDeadline",
+        jdbc.queryForObject(
+            "SELECT cancellation_deadline FROM checkout_order WHERE id=?",
+            java.sql.Timestamp.class,
+            order.id()));
     result.put("tickets", tickets.forOrder(order.id()));
     result.put("amount", order.amount());
     result.put("currency", order.currency());

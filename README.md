@@ -50,9 +50,9 @@ Prefer running Java locally? See [local development and configuration](docs/DEVE
 
 ## Verification
 
-**185 local tests passing**, including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
+**201 local tests passing** (204 discovered; 3 opt-in external checks skipped), including a 50-thread contention test, rollback safety, expiry updates, and direct database contention without Redis. The contention test asserts one confirmed booking and one database row.
 
-Sixty-eight Playwright checks cover desktop/mobile customer, organizer and developer behavior and run in CI. [Bug audit and coverage limits →](docs/BUG_AUDIT.md)
+104 Playwright checks cover desktop/mobile customer, organizer and developer behavior and run in CI. [Bug audit and coverage limits →](docs/BUG_AUDIT.md)
 
 An additional opt-in live Neon test verifies database reads and private storage upload, listing, download integrity, anonymous denial and deletion. CI runs the local suite against PostgreSQL and Redis, validates Docker Compose, and builds the container. [Validation details →](docs/VALIDATION.md)
 
@@ -63,6 +63,10 @@ DB_USER="$(whoami)" mvn verify
 # Set TICKIT_ACCESS_TOKEN locally for an authenticated probe; one seat is briefly held.
 ./scripts/rate_limit_probe.sh http://localhost:8080 1 25
 ```
+
+## Customer experience
+
+Browse detailed event information, filter by city/date/budget, save events and navigate custom seat maps with fit/zoom controls. My tickets adds calendar downloads, directions, tracked support, confirmation resends and recipient-accepted admission transfers. Organizers can opt new purchases into a full-order cancellation window. [Behavior, API and limits →](docs/CUSTOMER_EXPERIENCE.md)
 
 ## Payment checkout
 

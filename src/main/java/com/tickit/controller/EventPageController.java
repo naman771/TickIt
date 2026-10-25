@@ -13,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class EventPageController {
   private final EventRepository events;
 
-  @GetMapping("/events/{slug:[a-z0-9-]+}")
+  @GetMapping({"/events/{slug:[a-z0-9-]+}", "/events/{slug:[a-z0-9-]+}/book"})
   public String event(@PathVariable String slug) {
     if (!events.existsBySlugAndPublicationStatus(slug, "PUBLISHED"))
       throw new ResponseStatusException(HttpStatus.NOT_FOUND);

@@ -87,7 +87,8 @@ public class TicketService {
     return jdbc.query(
         "SELECT t.*,o.id order_id,o.event_id,i.label,CASE WHEN NOT ("
             + ACTIVE
-            + ") THEN 'INACTIVE' WHEN t.checked_in_at IS NOT NULL THEN 'USED' ELSE 'VALID' END"
+            + ") THEN 'INACTIVE' WHEN t.holder_id IS NOT NULL AND t.holder_id<>o.user_id THEN"
+            + " 'TRANSFERRED' WHEN t.checked_in_at IS NOT NULL THEN 'USED' ELSE 'VALID' END"
             + " ticket_status"
             + JOIN
             + " WHERE o.id=? ORDER BY i.id,t.ordinal",
@@ -109,16 +110,28 @@ public class TicketService {
     long user = current.resolve(null).getId();
     var rows =
         jdbc.queryForList(
-            "SELECT o.id order_id,o.event_id,t.credential" + JOIN + " WHERE t.id=? AND o.user_id=?",
+            "SELECT t.*,o.id order_id,o.event_id,i.label,("
+                + ACTIVE
+                + ") active"
+                + JOIN
+                + " WHERE t.id=? AND COALESCE(t.holder_id,o.user_id)=?",
             id,
             user);
     if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket not found");
     var row = rows.getFirst();
     var ticket =
-        forOrder((UUID) row.get("order_id")).stream()
-            .filter(t -> t.id().equals(id))
-            .findFirst()
-            .orElseThrow();
+        new Ticket(
+            id,
+            (UUID) row.get("order_id"),
+            ((Number) row.get("event_id")).longValue(),
+            (String) row.get("label"),
+            ((Number) row.get("ordinal")).intValue(),
+            !Boolean.TRUE.equals(row.get("active"))
+                ? "INACTIVE"
+                : row.get("checked_in_at") != null ? "USED" : "VALID",
+            row.get("checked_in_at") == null
+                ? null
+                : ((java.sql.Timestamp) row.get("checked_in_at")).toInstant());
     var data = new LinkedHashMap<String, Object>();
     data.put("ticket", ticket);
     data.put("event", snapshots.get(ticket.eventId()));
@@ -128,6 +141,27 @@ public class TicketService {
         "credential",
         "VALID".equals(ticket.status()) ? "tickit:v1:" + row.get("credential") : null);
     return data;
+  }
+
+  public List<Map<String, Object>> received() {
+    long user = current.resolve(null).getId();
+    return jdbc
+        .queryForList(
+            "SELECT t.id"
+                + JOIN
+                + " WHERE t.holder_id=? AND o.user_id<>? AND NOT EXISTS(SELECT 1 FROM"
+                + " customer_hidden_event h WHERE h.user_id=t.holder_id AND h.event_id=o.event_id)"
+                + " ORDER BY t.issued_at DESC LIMIT 300",
+            user,
+            user)
+        .stream()
+        .map(
+            row -> {
+              var detail = detail((UUID) row.get("id"));
+              detail.remove("credential");
+              return detail;
+            })
+        .toList();
   }
 
   @Transactional
