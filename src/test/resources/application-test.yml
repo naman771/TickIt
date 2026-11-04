@@ -13,6 +13,8 @@ logging:
     com.tickit: WARN
 
 app:
+  rate-limit:
+    capacity: 10000 # Business-flow fixtures; dedicated rate-limit tests use the real 20-token policy.
   seed:
     enabled: true
   auth:

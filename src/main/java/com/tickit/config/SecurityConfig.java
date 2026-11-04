@@ -19,6 +19,9 @@ public class SecurityConfig {
     config.setAllowedOrigins(auth.origins());
     config.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
     config.setAllowedHeaders(java.util.List.of("Authorization", "Content-Type"));
+    config.setExposedHeaders(
+        java.util.List.of(
+            "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"));
     config.setAllowCredentials(false);
     config.setMaxAge(600L);
     var source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();

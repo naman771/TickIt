@@ -28,9 +28,10 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(RateLimitExceededException.class)
   public ResponseEntity<Map<String, Object>> handleRateLimit(RateLimitExceededException ex) {
-    log.warn("Rate limit exceeded: {}", ex.getMessage());
+    log.debug("Rate limit exceeded");
     return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-        .header("Retry-After", "10")
+        .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+        .header("Cache-Control", "no-store")
         .body(errorBody(429, ex.getMessage()));
   }
 

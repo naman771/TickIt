@@ -1,38 +1,39 @@
--- rate_limiter.lua
--- Token-bucket rate limiter (atomic via Redis Lua)
---
--- KEYS[1] = rate-limit key (e.g. "rl:user:42" or "rl:ip:1.2.3.4")
--- ARGV[1] = capacity  (max tokens)
--- ARGV[2] = refill rate (tokens per second)
---
--- Returns: 1 if allowed, 0 if rejected
-
-local key       = KEYS[1]
-local capacity  = tonumber(ARGV[1])
-local refill    = tonumber(ARGV[2])
-local clock     = redis.call('TIME')
-local now       = clock[1] * 1000 + math.floor(clock[2] / 1000)
-
+-- Atomic shared token bucket. KEYS[1]: bucket; ARGV: capacity, tokens/sec, optional "details".
+-- Legacy result: 1/0. Details: allowed, remaining, retry-ms, full-refill Unix seconds.
+local key = KEYS[1]
+local capacity = tonumber(ARGV[1])
+local refill = tonumber(ARGV[2])
+local clock = redis.call('TIME')
+local now = clock[1] * 1000 + math.floor(clock[2] / 1000)
 local data = redis.call('HMGET', key, 'tokens', 'last')
 local tokens = tonumber(data[1])
-local last   = tonumber(data[2])
-
+local last = tonumber(data[2])
 if tokens == nil then
-    -- First request: initialise bucket
     tokens = capacity
-    last   = now
+    last = now
 end
-
--- Refill tokens based on elapsed time
-local elapsed = math.max(0, now - last) / 1000.0   -- seconds
+local elapsed = math.max(0, now - last) / 1000.0
 local refilled = math.min(capacity, tokens + elapsed * refill)
-
-if refilled < 1 then
-    return 0  -- rejected
+local allowed = 0
+if refilled >= 1 then
+    refilled = refilled - 1
+    allowed = 1
 end
-
--- Consume one token
-refilled = refilled - 1
-redis.call('HMSET', key, 'tokens', tostring(refilled), 'last', tostring(now))
-redis.call('EXPIRE', key, 120)  -- auto-cleanup after 2 min inactivity
-return 1  -- allowed
+-- Preserve future timestamps during backwards clock adjustments.
+local updated = math.max(now, last)
+local skew = updated - now
+local full = 120000
+local retry = 0
+if refill > 0 then
+    full = skew + math.ceil((capacity - refilled) / refill * 1000)
+    if allowed == 0 then
+        retry = skew + math.ceil((1 - refilled) / refill * 1000)
+    end
+end
+-- Expiration must never grant a free burst before normal refill would fill the bucket.
+redis.call('HSET', key, 'tokens', tostring(refilled), 'last', tostring(updated))
+redis.call('PEXPIRE', key, math.max(120000, full))
+if ARGV[3] == 'details' then
+    return {allowed, math.floor(refilled), retry, math.ceil((now + full) / 1000)}
+end
+return allowed

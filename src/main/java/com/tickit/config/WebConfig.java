@@ -13,21 +13,11 @@ public class WebConfig implements WebMvcConfigurer {
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
-    // Apply rate limiting to booking endpoints
+    // Protect catalog reads and future API handlers by default. Provider callbacks
+    // use signature validation and idempotency, independently of customer quotas.
     registry
         .addInterceptor(rateLimiterInterceptor)
-        .addPathPatterns(
-            "/api/bookings/**",
-            "/api/account/**",
-            "/api/developer/support/**",
-            "/api/tickets/**",
-            "/api/entry/**",
-            "/api/developer/payments/**",
-            "/api/developer/notifications/**",
-            "/api/payments/orders/**",
-            "/api/holds/**",
-            "/api/organizer/**",
-            "/api/events/*/admission-holds",
-            "/api/events/admission-holds/**");
+        .addPathPatterns("/api/**")
+        .excludePathPatterns("/api/payments/webhook");
   }
 }

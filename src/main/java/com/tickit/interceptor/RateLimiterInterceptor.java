@@ -1,47 +1,36 @@
 package com.tickit.interceptor;
 
+import com.tickit.config.AuthSettings;
 import com.tickit.exception.RateLimitExceededException;
 import com.tickit.service.RateLimiterService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-/**
- * Spring MVC interceptor that enforces per-IP rate limiting
- * on configured endpoint patterns (see WebConfig).
- */
+/** Rate limits every mapped API handler except the signed provider webhook. */
 @Component
 @RequiredArgsConstructor
-@Slf4j
 public class RateLimiterInterceptor implements HandlerInterceptor {
+  private final RateLimiterService rateLimiterService;
+  private final AuthSettings authSettings;
 
-    private final RateLimiterService rateLimiterService;
-    private final com.tickit.config.AuthSettings authSettings;
-
-    @Override
-    public boolean preHandle(HttpServletRequest request,
-                             HttpServletResponse response,
-                             Object handler) {
-        String clientIp = extractClientIp(request);
-
-        if (!rateLimiterService.isAllowedForIp(clientIp)) {
-            throw new RateLimitExceededException(
-                    "Too many requests from IP " + clientIp + ". Please try again later.");
-        }
-
-        var principal = request.getUserPrincipal();
-        if (principal != null && !authSettings.isTest()
-                && !rateLimiterService.isAllowed("rl:subject:" + principal.getName())) {
-            throw new RateLimitExceededException("Too many requests. Please try again later.");
-        }
-
-        return true; // proceed
+  @Override
+  public boolean preHandle(
+      HttpServletRequest request, HttpServletResponse response, Object handler) {
+    if ("OPTIONS".equals(request.getMethod())) return true;
+    // Never read client-supplied forwarding headers here. Trusted ingress/container
+    // configuration must resolve proxy addresses before this boundary.
+    var decision = rateLimiterService.check("rl:ip:" + request.getRemoteAddr());
+    var principal = request.getUserPrincipal();
+    if (decision.allowed() && principal != null && !authSettings.isTest()) {
+      decision = decision.restrict(rateLimiterService.check("rl:subject:" + principal.getName()));
     }
-
-    private String extractClientIp(HttpServletRequest request) {
-        return request.getRemoteAddr();
-    }
+    response.setHeader("X-RateLimit-Limit", String.valueOf(decision.limit()));
+    response.setHeader("X-RateLimit-Remaining", String.valueOf(decision.remaining()));
+    response.setHeader("X-RateLimit-Reset", String.valueOf(decision.resetEpochSeconds()));
+    if (!decision.allowed()) throw new RateLimitExceededException(decision.retryAfterSeconds());
+    return true;
+  }
 }
