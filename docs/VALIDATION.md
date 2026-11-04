@@ -1,4 +1,8 @@
-# Current local validation — 24 October 2026
+# Current local validation — 4 November 2026
+
+Rate limiting and organizer validation: **227 backend tests, 224 passed, 3 external-provider skips**, zero failures/errors, executable JAR build passed. **114 desktop/mobile browser checks passed**, followed by 34 focused organizer checks on the final form. Dedicated rate-limit coverage includes real Redis contention across two instances, expiry/refill, rollback of clock time, all mapped API categories, subject identity, forwarding-header spoofing, 429 headers and 503 failures. Organizer checks verify inline errors, blocked save/publish requests, correction, blur behavior, valid private drafts and admission-mode switching. These remain local evidence until the current commit's hosted rollout is verified.
+
+## Previous local validation — 24 October 2026
 
 `DB_USER=naman mvn -B verify`: **188 tests, 0 failures, 0 errors, 3 optional external-provider skips**; executable JAR build passed. **185 backend tests passed.** Chrome browser suite: **86 desktop/mobile checks passed**. Organizer static build passed. These are local build results; actual mobile camera, email transport acceptance and container/live checks require separate validation. See [continuation](CONTINUATION.md).
 

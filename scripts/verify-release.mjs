@@ -16,6 +16,8 @@ async function check(label,base,path,validate){
 }
 await check('backend health',customer,'/actuator/health',async r=>r.ok&&(await r.json()).status==='UP');
 await check('connected identity',customer,'/api/public/config',async r=>r.ok&&(await r.json()).authProvider==='clerk');
+await check('public API rate-limit headers',customer,'/api/public/config',r=>r.ok&&Number(r.headers.get('X-RateLimit-Limit'))>0&&r.headers.has('X-RateLimit-Remaining')&&Number(r.headers.get('X-RateLimit-Reset'))>0);
+await check('organizer inline validation',organizer,'/organizer.js',async r=>r.ok&&(await r.text()).includes('eventValidationSummary'));
 await check('customer ticket client',customer,'/js/tickets.js',async r=>r.ok&&(await r.text()).includes('data-ticket-print'));
 await check('organizer operations',organizer,'/operations.js',async r=>r.ok&&(await r.text()).includes('data-staff-revoke'));
 await check('entry workspace',organizer,'/entry.html',async r=>r.ok&&(await r.text()).includes('entryWorkspace'));

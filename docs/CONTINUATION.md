@@ -2,6 +2,16 @@
 
 This document records the ticket lifecycle implementation and remaining operational work. Publication is authorized. GitHub CI and Render deployment status determine which revision is live; local test results alone do not confirm a hosted rollout.
 
+## Rate limiting and organizer validation — 4 November 2026
+
+Started from clean `main` at `829bba2`; both existing Render deployments were verified live at that revision. The backend plan remains free and the hosted payment key remains test-only. No provider, database schema, queue or hosting-plan change is needed for this checkpoint.
+
+Extended the existing atomic Redis limiter to every mapped API handler, with explicit signed-webhook/preflight exclusions. Added accurate quota/retry headers, CORS exposure, startup policy validation, refill-safe expiry, backwards-clock protection and explicit 503 on missing infrastructure results. See [rate-limit policy and boundaries](RATE_LIMITING.md), including the proxy trust and pre-MVC authentication limitations.
+
+Organizer event forms now show required markers, inline field feedback and an accessible linked summary instead of native validation popovers. Save/publish validation runs before requests, with stricter publication requirements and editable private drafts. A blur-layout shift that could swallow a save click is covered by browser regression tests. Backend validation remains authoritative.
+
+Local verification: **227 backend tests, 224 passed, 3 optional external-provider skips**, zero failures/errors; packaged build passed. **114 desktop/mobile browser checks passed**, followed by **34 focused organizer checks** on the final form, including twelve new validation cases. Desktop/mobile error-summary screenshots were visually inspected. Initial verification is local; record exact CI/Render revision and hosted checks after publication rather than treating these results as proof of deployment.
+
 ## Current verified state — 24 October 2026
 
 Verified before continuing: local `main`, GitHub `main`, successful [GitHub CI run 40073015952](https://github.com/naman771/TickIt/actions/runs/40073015952), and both live Render deployments agree on `07e2b28e38849a8b9255fc83b1258270be3482d5`. The working tree was clean. Deployed customer/organizer assets match that revision; all ten public health, identity, asset and anonymous-rejection checks pass. Organizer CORS passes. V9–V13 are applied, ticket credential lengths are valid, and the historical paid-order/booking snapshot remains preserved.

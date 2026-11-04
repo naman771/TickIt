@@ -38,6 +38,10 @@ For local development, allow `http://localhost:8081,http://localhost:8083` in th
 
 ## Validation
 
+The event editor owns validation feedback. Required fields are marked with an asterisk; leaving an incomplete field shows an inline message. Saving or publishing an invalid event shows a linked error summary, focuses the first invalid field and sends no save/publish API request. Corrected fields clear their errors while editing. Native browser validation popovers are disabled only on this dynamically rendered form; the same HTML constraints and backend validation still apply.
+
+Local checks cover required/whitespace values, numeric limits, date ordering, HTTPS cover URLs, guest inventory capacity, zone/ticket names and quotas, and required explanations for published schedule changes. Publishing additionally requires a description, future start and admission inventory. Saving a private draft allows an unfinished description/layout. Hidden admission-mode inputs do not block saving. Backend validation still resolves timezone ambiguity, ownership, current reservations, revisions and concurrent changes.
+
 Twenty-six organizer integration tests cover ownership, role separation, draft privacy, custom layouts, stale revisions, publication, bulk edits, booked-seat protection, cancellation, deletion, date changes, invalid inputs, sales windows and concurrent reservations across shared-price tiers. The V3 migration and these flows also passed on a temporary Neon copy of production; that branch was removed afterward. Browser checks use explicit UI fixtures and cover CSV import/export, custom seating, mixed admission, preview, publishing, INR pricing, GA quantities and mobile layout. No sample organizer events were inserted into the public catalog.
 
 The live organizer origin was tested with real Clerk scripts and the production API: Google sign-in UI loaded, cross-origin requests reached protected routes, and no browser errors occurred. Completing OAuth and creating a real event uses the organizer's own session; automated flow data stayed in isolated tests.

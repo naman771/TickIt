@@ -156,7 +156,7 @@ function editor(draft) {
   state.pools = structuredClone(draft.pools || []);
   const published = draft.status === "PUBLISHED";
   const locked = ["CANCELLED", "DELETED"].includes(draft.status);
-  root.innerHTML = `<section class="container"><a class="back" href="#">← All events</a><div class="page-head"><div><div class="eyebrow">${draft.id ? "Event workspace" : "Create an event"} / <span class="badge ${locked ? "" : "draft"}">${esc(draft.status || "Private draft")}</span></div><h1>${locked ? esc(draft.name) : draft.id ? "Keep shaping your event." : "Something worth showing up for."}</h1><p>${locked ? "This event is no longer on sale. Booking and payment records are retained." : published ? "Update available seats or change event dates. Booked seats cannot be removed or relabelled." : "Your draft stays private until you publish it."}</p></div><div class="top-actions"><button type="button" data-preview>Preview event</button>${draft.id ? `<a class="primary" href="#operations/${draft.id}">Bookings & entry</a><button data-duplicate>Duplicate as draft</button>${published ? `<a class="primary" style="padding:12px 18px;border-radius:5px;font-size:12px" href="${esc(base)}${draft.slug ? `/events/${encodeURIComponent(draft.slug)}` : `/#event/${draft.id}`}" target="_blank" rel="noopener">View customer page ↗</a>` : ""}` : ""}</div></div><form id="eventForm"><div class="editor-layout"><div><fieldset ${locked ? "disabled" : ""}><section class="panel"><div class="panel-head"><div><h2><small>01</small> The essentials</h2><p>Tell guests what they can look forward to.</p></div></div><div class="fields">${field("Event name", "name", draft.name, "text", 'required maxlength="512"', true)}<label class="full">Event description<textarea name="description" maxlength="10000" placeholder="The experience, the lineup, and what guests should know…">${esc(draft.description)}</textarea></label>${informationFields(draft.information)}<label class="full"><span><input type="checkbox" name="cancellationEnabled" ${draft.cancellationPolicy?.enabled ? "checked" : ""}> Allow full customer cancellations before the cutoff</span></label>${field("Cancellation cutoff (hours before start)", "cancellationCutoffHours", draft.cancellationPolicy?.cutoffHours || 24, "number", 'min="1" max="720"')}<p class="full">Applies to new purchases. Existing orders keep the cancellation deadline promised at checkout. Full order refunds only; provider processing can take time.</p>${select(
+  root.innerHTML = `<section class="container"><a class="back" href="#">← All events</a><div class="page-head"><div><div class="eyebrow">${draft.id ? "Event workspace" : "Create an event"} / <span class="badge ${locked ? "" : "draft"}">${esc(draft.status || "Private draft")}</span></div><h1>${locked ? esc(draft.name) : draft.id ? "Keep shaping your event." : "Something worth showing up for."}</h1><p>${locked ? "This event is no longer on sale. Booking and payment records are retained." : published ? "Update available seats or change event dates. Booked seats cannot be removed or relabelled." : "Your draft stays private until you publish it."}</p></div><div class="top-actions"><button type="button" data-preview>Preview event</button>${draft.id ? `<a class="primary" href="#operations/${draft.id}">Bookings & entry</a><button data-duplicate>Duplicate as draft</button>${published ? `<a class="primary" style="padding:12px 18px;border-radius:5px;font-size:12px" href="${esc(base)}${draft.slug ? `/events/${encodeURIComponent(draft.slug)}` : `/#event/${draft.id}`}" target="_blank" rel="noopener">View customer page ↗</a>` : ""}` : ""}</div></div><form id="eventForm" novalidate><p class="form-hint">Fields marked * are required. Drafts can be saved before adding tickets; publishing needs a description and admission inventory.</p><div id="eventValidationSummary" class="validation-summary" role="alert" tabindex="-1" hidden></div><div class="editor-layout"><div><fieldset ${locked ? "disabled" : ""}><section class="panel"><div class="panel-head"><div><h2><small>01</small> The essentials</h2><p>Tell guests what they can look forward to.</p></div></div><div class="fields">${field("Event name", "name", draft.name, "text", 'required maxlength="512"', true)}<label class="full">Event description<textarea name="description" maxlength="10000" placeholder="The experience, the lineup, and what guests should know…">${esc(draft.description)}</textarea></label>${informationFields(draft.information)}<label class="full"><span><input type="checkbox" name="cancellationEnabled" ${draft.cancellationPolicy?.enabled ? "checked" : ""}> Allow full customer cancellations before the cutoff</span></label>${field("Cancellation cutoff (hours before start)", "cancellationCutoffHours", draft.cancellationPolicy?.cutoffHours || 24, "number", 'min="1" max="720"')}<p class="full">Applies to new purchases. Existing orders keep the cancellation deadline promised at checkout. Full order refunds only; provider processing can take time.</p>${select(
     "Event type",
     "category",
     [
@@ -194,6 +194,7 @@ function editor(draft) {
   formatSections();
   renderMap();
   updateInventory();
+  prepareEventValidation();
 }
 function formatSections() {
   const mode = document.querySelector("[name=admissionMode]")?.value;
@@ -216,6 +217,148 @@ function formatSections() {
   }
   updateInventory();
 }
+function eventValidationFields() {
+  return [...(document.getElementById("eventForm")?.querySelectorAll("input,select,textarea") || [])]
+    .filter((input) => !["checkbox", "file", "hidden"].includes(input.type)
+      && !input.closest(".section-builder") && input.id !== "selectedPrice");
+}
+let eventValidationId = 0;
+function prepareEventValidation() {
+  eventValidationFields().forEach((input) => {
+    input.id ||= `event-field-${++eventValidationId}`;
+    const label = input.closest("label");
+    if (!label) return;
+    if (input.required && !label.querySelector(".field-required")) {
+      const marker = document.createElement("span");
+      marker.className = "field-required";
+      marker.textContent = " *";
+      marker.setAttribute("aria-hidden", "true");
+      label.insertBefore(marker, input);
+    }
+    const id = `${input.id}-error`;
+    if (!document.getElementById(id)) {
+      const error = document.createElement("span");
+      error.id = id;
+      error.className = "field-error";
+      error.hidden = true;
+      label.append(error);
+    }
+    const descriptions = new Set((input.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean));
+    descriptions.add(id);
+    input.setAttribute("aria-describedby", [...descriptions].join(" "));
+  });
+}
+function validateEventForm({ submit = false, publishing = false } = {}) {
+  const form = document.getElementById("eventForm");
+  if (!form) return false;
+  prepareEventValidation();
+  if (submit) {
+    form.dataset.validationAttempted = "true";
+    form.dataset.publishingValidation = String(publishing);
+  }
+  publishing = publishing || form.dataset.publishingValidation === "true";
+  const fields = eventValidationFields();
+  const errors = new Map();
+  const add = (input, message) => {
+    if (input && !input.disabled && !errors.has(input)) errors.set(input, message);
+  };
+  for (const input of fields.filter((el) => !el.disabled)) {
+    const validity = input.validity;
+    if (input.required && !input.value.trim()) add(input, "This field is required.");
+    else if (validity.badInput) add(input, "Enter a valid number or date.");
+    else if (validity.typeMismatch) add(input, "Enter a valid URL, such as https://example.com/image.jpg.");
+    else if (validity.rangeUnderflow) add(input, `Enter a value of at least ${input.min}.`);
+    else if (validity.rangeOverflow) add(input, `Enter a value no higher than ${input.max}.`);
+    else if (validity.stepMismatch) add(input, input.step === "0.01" ? "Use no more than two decimal places." : "Enter a whole number.");
+    else if (validity.tooLong) add(input, `Use no more than ${input.maxLength} characters.`);
+    else if (!validity.valid) add(input, "Check this value.");
+  }
+  const named = (name) => form.elements.namedItem(name);
+  const value = (name) => named(name)?.value || "";
+  // All these values use the selected event timezone, so wall-time comparisons
+  // here must not convert them through the browser's own timezone.
+  const wall = (v) => v.length === 16 ? v + ":00" : v;
+  if (value("startTime") && value("endTime") && wall(value("endTime")) <= wall(value("startTime")))
+    add(named("endTime"), "End time must be after the start time.");
+  if (value("salesEnd") && value("startTime") && wall(value("salesEnd")) > wall(value("startTime")))
+    add(named("salesEnd"), "Ticket sales must close by the event start.");
+  if (value("salesStart") && (value("salesEnd") || value("startTime"))
+      && wall(value("salesStart")) >= wall(value("salesEnd") || value("startTime")))
+    add(named("salesStart"), "Sales opening must be before sales closing or the event start.");
+  if (state.draft?.status === "PUBLISHED"
+      && ["startTime", "endTime", "timezone"].some((name) => wall(value(name)) !== wall(state.draft[name] || ""))
+      && !value("changeReason").trim())
+    add(named("changeReason"), "Explain the schedule change for existing ticket holders.");
+  if (value("imageUrl")) {
+    try {
+      const url = new URL(value("imageUrl"));
+      if (url.protocol !== "https:" || !url.hostname || url.username || url.password || value("imageUrl").length > 1024)
+        add(named("imageUrl"), "Use an HTTPS image URL without embedded credentials (maximum 1,024 characters).");
+    } catch { add(named("imageUrl"), "Enter a valid HTTPS image URL."); }
+  }
+  const mode = value("admissionMode");
+  const pools = mode === "SEATED" ? [] : state.pools;
+  const inventory = (mode === "GENERAL" ? 0 : state.seats.length)
+    + pools.reduce((n, pool) => n + Number(pool.capacity || 0), 0);
+  if (inventory > Number(value("guestCapacity")))
+    add(named("guestCapacity"), `Configured inventory has ${inventory} places. Increase capacity or reduce inventory.`);
+  const seenPools = new Set();
+  pools.forEach((pool, i) => {
+    const poolField = (field) => form.querySelector(`[data-pool="${i}"][data-field="${field}"]:not([data-tier])`);
+    if (seenPools.has(pool.name.trim())) add(poolField("name"), "Use a different name for each admission zone.");
+    seenPools.add(pool.name.trim());
+    if (!pool.tickets.length) add(poolField("name"), "Add at least one ticket type to this zone.");
+    const seenTiers = new Set();
+    pool.tickets.forEach((ticket, j) => {
+      const tierField = (field) => form.querySelector(`[data-pool="${i}"][data-tier="${j}"][data-field="${field}"]`);
+      if (Number(ticket.quota) > Number(pool.capacity)) add(tierField("quota"), "Ticket quota cannot exceed this zone's shared capacity.");
+      if (seenTiers.has(ticket.name.trim())) add(tierField("name"), "Use a different name for each ticket type in this zone.");
+      seenTiers.add(ticket.name.trim());
+    });
+  });
+  if (publishing) {
+    if (value("description").trim().length < 20) add(named("description"), "Add a description of at least 20 characters before publishing.");
+    if (mode !== "GENERAL" && !state.seats.length) add(named("admissionMode"), "Add assigned seats before publishing, or choose general admission.");
+    if (mode !== "SEATED" && !pools.length) add(named("admissionMode"), "Add an admission zone with tickets before publishing.");
+    if (value("startTime")) {
+      const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+        timeZone: value("timezone"), year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+      }).formatToParts(new Date()).map((p) => [p.type, p.value]));
+      const now = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+      if (wall(value("startTime")) <= now) add(named("startTime"), "Choose a future start time before publishing.");
+    }
+  }
+  for (const input of fields) {
+    const error = document.getElementById(`${input.id}-error`);
+    const message = errors.get(input);
+    const show = Boolean(message && (form.dataset.validationAttempted || input.dataset.touched));
+    input.setAttribute("aria-invalid", String(show));
+    if (error) { error.hidden = !show; error.textContent = show ? message : ""; }
+  }
+  const summary = document.getElementById("eventValidationSummary");
+  summary.hidden = !form.dataset.validationAttempted || errors.size === 0;
+  if (!summary.hidden) {
+    summary.innerHTML = `<strong>Check ${errors.size} ${errors.size === 1 ? "field" : "fields"} before ${publishing ? "publishing" : "saving"}.</strong><ul>${[...errors].map(([input, message]) => {
+      const label = [...(input.closest("label")?.childNodes || [])].filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent).join("").trim() || "Event details";
+      return `<li><button type="button" data-validation-field="${esc(input.id)}">${esc(label)}: ${esc(message)}</button></li>`;
+    }).join("")}</ul>`;
+  }
+  if (submit && errors.size) {
+    const first = errors.keys().next().value;
+    first.focus();
+    first.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  return errors.size === 0;
+}
+document.addEventListener("focusout", (event) => {
+  if (!event.target.closest("#eventForm") || !eventValidationFields().includes(event.target)) return;
+  event.target.dataset.touched = "true";
+  // Avoid moving an action button between pointerdown and click as an error appears.
+  // Submit/publish run validation themselves before any network request.
+  if (event.relatedTarget?.closest("#eventForm button")) return;
+  validateEventForm();
+});
 function readPayload() {
   const form = new FormData(document.getElementById("eventForm"));
   const get = (k) => form.get(k) || "";
@@ -405,6 +548,7 @@ function renderPools() {
     )
     .join("");
   updateInventory();
+  if (document.getElementById("eventForm")?.dataset.validationAttempted) validateEventForm();
 }
 function preview() {
   const d = readPayload();
@@ -422,9 +566,8 @@ function preview() {
     )}<p>${d.cancellationPolicy?.enabled ? `Full cancellation until ${Number(d.cancellationPolicy.cutoffHours)} hours before start (new purchases).` : "Customer cancellation is not offered."}</p>${d.admissionMode !== "GENERAL" ? mapMarkup() : ""}${d.admissionMode !== "SEATED" ? d.pools.map((p) => `<h3>${esc(p.name)} · ${p.capacity} capacity</h3>${p.tickets.map((t) => `<p>${esc(t.name)} · ${money(t.price)}</p>`).join("")}`).join("") : ""}<p>Published events appear on the customer website. Checkout availability depends on configured payment services.</p>`;
   dialog.showModal();
 }
-async function saveDraft(render = true) {
-  const form = document.getElementById("eventForm");
-  if (!form.reportValidity()) return null;
+async function saveDraft(render = true, publishing = false) {
+  if (!validateEventForm({ submit: true, publishing })) return null;
   const payload = readPayload();
   const generation = state.routeGeneration;
   const draftId = state.draft.id;
@@ -715,6 +858,7 @@ document.addEventListener("input", (event) => {
   if (input.name === "admissionMode") formatSections();
   if (["stageLabel", "stageX", "stageY"].includes(input.name)) renderMap();
   updateInventory();
+  if (input.closest("#eventForm")) validateEventForm();
 });
 document.addEventListener("change", async (event) => {
   if (event.target.id !== "seatCsv") return;
@@ -743,6 +887,7 @@ document.addEventListener("submit", async (event) => {
   if (!["profileForm", "eventForm"].includes(event.target.id)) return;
   event.preventDefault();
   if (state.busy) return;
+  if (event.target.id === "eventForm" && !validateEventForm({ submit: true })) return;
   state.busy = true;
   event.target.inert = true;
   try {
@@ -773,6 +918,10 @@ document.addEventListener("submit", async (event) => {
 document.addEventListener("click", async (event) => {
   const target = event.target.closest("button,a");
   if (!target) return;
+  if (target.dataset.validationField) {
+    document.getElementById(target.dataset.validationField)?.focus();
+    return;
+  }
   if (target.dataset.auth) {
     TickItAuth.open(target.dataset.auth);
     return;
@@ -970,7 +1119,7 @@ document.addEventListener("click", async (event) => {
   if (target.hasAttribute("data-import"))
     document.getElementById("seatCsv").click();
   if (target.hasAttribute("data-publish")) {
-    if (!document.getElementById("eventForm").reportValidity()) return;
+    if (!validateEventForm({ submit: true, publishing: true })) return;
     if (
       !confirm(
         "Publish this event to the customer website? Booked seats will be protected from deletion or relabelling.",
@@ -983,7 +1132,7 @@ document.addEventListener("click", async (event) => {
     form.inert = true;
     target.disabled = true;
     try {
-      const saved = await saveDraft(false);
+      const saved = await saveDraft(false, true);
       if (saved) {
         const published = await api(
           `/api/organizer/events/${saved.id}/publish`,
