@@ -994,15 +994,15 @@ async function fillEventEssentials(page) {
   })) await page.locator(`[name=${name}]`).fill(value);
 }
 
-test("organizer validates missing fields inline without native popovers or a save request", async ({ page }) => {
+test("organizer shows a finishing checklist only after incomplete publication", async ({ page }) => {
   const f = await organizer(page);
   await page.evaluate(() => {
     window.nativeInvalidEvents = 0;
     document.addEventListener("invalid", () => window.nativeInvalidEvents++, true);
   });
   await expect(page.locator("#eventForm")).toHaveAttribute("novalidate", "");
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
-  await expect(page.locator("#eventValidationSummary")).toContainText("Check 5 fields before saving");
+  await page.locator("[data-publish]").click();
+  await expect(page.locator("#eventValidationSummary")).toContainText("A few finishing touches.");
   await expect(page.locator("[name=name]")).toBeFocused();
   await expect(page.locator('[name=name]')).toHaveAttribute("aria-invalid", "true");
   const errorId = await page.locator("[name=name]").getAttribute("aria-describedby");
@@ -1015,15 +1015,24 @@ test("organizer validates missing fields inline without native popovers or a sav
   await expect(page.locator('[name=name]')).toHaveAttribute("aria-invalid", "true");
   await page.locator("[name=name]").fill("My event");
   await expect(page.locator('[name=name]')).toHaveAttribute("aria-invalid", "false");
-  await expect(page.locator("#eventValidationSummary")).toContainText("Check 4 fields");
+  await expect(page.locator("#eventValidationSummary [data-validation-field]").filter({ hasText: "Event name" })).toHaveCount(0);
   expect(f.errors).toEqual([]);
 });
 
-test("organizer shows required field errors on blur before submitting", async ({ page }) => {
-  await organizer(page);
+test("organizer stays quiet while drafting and after leaving empty fields", async ({ page }) => {
+  const f = await organizer(page);
   await page.locator("[name=name]").focus();
   await page.locator("[name=venueName]").focus();
-  await expect(page.locator("[name=name]")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("[name=name]")).not.toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator(".field-error:visible")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: test.info().outputPath("organizer-drafting.png") });
+  await page.locator("[name=name]").focus();
+  const originalBorder = await page.locator("[name=name]").evaluate((el) => getComputedStyle(el).borderColor);
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(page.locator("#eventDraftGuidance")).toBeVisible();
+  await expect(page.locator("[name=name]")).toHaveCSS("border-color", originalBorder);
+  expect(f.saved()).toBeUndefined();
   await expect(page.locator("#eventValidationSummary")).toBeHidden();
   await page.locator("[name=name]").fill("Draft title");
   await expect(page.locator("[name=name]")).toHaveAttribute("aria-invalid", "false");
@@ -1036,9 +1045,10 @@ test("organizer blocks invalid schedule and image URL locally and saves after co
   await page.locator("[name=salesEnd]").fill("2099-06-01T20:00");
   await page.locator("[name=imageUrl]").fill("http://example.com/poster.jpg");
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
-  await expect(page.locator("#eventValidationSummary")).toContainText("End time must be after");
-  await expect(page.locator("#eventValidationSummary")).toContainText("sales must close");
-  await expect(page.locator("#eventValidationSummary")).toContainText("HTTPS image URL");
+  await expect(page.locator(".field-error").filter({ hasText: "End time must be after" })).toBeVisible();
+  await expect(page.locator("#eventValidationSummary")).toBeHidden();
+  await expect(page.locator(".field-error").filter({ hasText: "sales must close" })).toBeVisible();
+  await expect(page.locator(".field-error").filter({ hasText: "HTTPS image URL" })).toBeVisible();
   expect(f.saved()).toBeUndefined();
   await page.locator("[name=endTime]").fill("2099-06-01T22:00");
   await page.locator("[name=salesEnd]").fill("2099-06-01T18:00");
@@ -1055,7 +1065,7 @@ test("organizer publishing checks description and inventory before saving or con
   let dialogs = 0;
   page.on("dialog", () => dialogs++);
   await page.locator("[data-publish]").click();
-  await expect(page.locator("#eventValidationSummary")).toContainText("before publishing");
+  await expect(page.locator("#eventValidationSummary")).toContainText("A few finishing touches.");
   await expect(page.locator("#eventValidationSummary")).toContainText("20 characters");
   await expect(page.locator("#eventValidationSummary")).toContainText("Add assigned seats");
   expect(f.saved()).toBeUndefined();
@@ -1075,7 +1085,8 @@ test("organizer validates zone quotas and ignores disabled zones after changing 
   expect(await page.evaluate(() => state.pools[0].tickets[0].quota)).toBe(101);
   expect(await page.locator('[data-pool="0"][data-tier="0"][data-field="quota"]').isEnabled()).toBe(true);
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
-  await expect(page.locator("#eventValidationSummary")).toContainText("quota cannot exceed");
+  await expect(page.locator(".field-error").filter({ hasText: "quota cannot exceed" })).toBeVisible();
+  await expect(page.locator("#eventValidationSummary")).toBeHidden();
   expect(f.saved()).toBeUndefined();
   await page.locator("[name=admissionMode]").selectOption("SEATED");
   await expect(page.locator("#eventValidationSummary")).toBeHidden();
@@ -1088,7 +1099,8 @@ test("published organizer schedule changes require an inline explanation before 
   const f = await publishedOrganizer(page);
   await page.locator('[name="startTime"]').fill("2099-05-01T19:00");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.locator("#eventValidationSummary")).toContainText("Explain the schedule change");
+  await expect(page.locator(".field-error").filter({ hasText: "Explain the schedule change" })).toBeVisible();
+  await expect(page.locator("#eventValidationSummary")).toBeHidden();
   expect(f.submitted()).toBeUndefined();
   await page.locator('[name="changeReason"]').fill("Earlier venue booking");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();

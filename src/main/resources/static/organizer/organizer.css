@@ -725,12 +725,38 @@ footer {
 
 .operations-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.operations .panel{margin-bottom:20px}.operations-table{overflow-x:auto}.operations table{width:100%;border-collapse:collapse;font-size:13px}.operations th,.operations td{padding:14px 10px;text-align:left;border-bottom:1px solid #e0e6db}.operations small{display:block;color:#64776a;margin-top:5px}.staff-row{display:flex;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid #e0e6db}.entry-workspace{max-width:760px;padding-top:40px}.entry-workspace label{display:block;margin:22px 0}.entry-workspace input,.entry-workspace select{display:block;width:100%;margin-top:9px;padding:12px}.entry-workspace video{width:100%;max-height:420px;background:#173d32;border-radius:6px;margin:20px 0}.entry-workspace video:not([src]){min-height:0}.scan-result{padding:22px;background:#f5ead7;border:1px solid #e0d5bd;border-radius:5px;margin-top:25px;font-weight:600}.scan-result.admitted{background:#dcebdd;border-color:#476d48}@media(max-width:650px){.operations-stats{grid-template-columns:1fr}.staff-row{flex-wrap:wrap}.operations .page-head{display:block}.operations .page-head>a{display:inline-block;margin:12px 0}}
 
-/* Website-owned validation: retain native constraints without browser popovers. */
-.field-required { color: #a22a25; }
-.field-error { display: block; margin-top: 7px; color: #9b2522; font-size: 12px; line-height: 1.5; }
-.field-error[hidden], .validation-summary[hidden] { display: none; }
-[aria-invalid="true"] { border-color: #b8322d; }
+/* Keep drafting quiet; publication feedback appears only after Publish is attempted. */
+.field-error {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.field-error[hidden], .validation-summary[hidden], .draft-guidance[hidden] { display: none; }
+#eventForm[data-publishing-validation="true"] [aria-invalid="true"] { border-color: #b16a50; }
+#eventForm[data-publishing-validation="true"] .field-error { color: #98543e; }
 .form-hint { font-size: 13px; line-height: 1.6; color: var(--muted); }
-.validation-summary { padding: 18px; margin: 20px 0; border: 1px solid #c85a55; border-radius: 5px; background: #fff4f2; color: #82201d; }
-.validation-summary ul { margin: 10px 0 0; padding-left: 20px; }
-.validation-summary button { padding: 4px 0; background: transparent; border: 0; color: inherit; text-align: left; text-decoration: underline; font-size: 13px; line-height: 1.5; }
+.draft-guidance { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.validation-summary {
+  display: grid;
+  grid-template-columns: minmax(200px, .7fr) 1.5fr;
+  gap: 36px;
+  padding: 28px 0;
+  margin: 26px 0;
+  border-top: 1px solid #d3ddd2;
+  border-bottom: 1px solid #d3ddd2;
+  color: var(--ink);
+}
+.validation-intro h2 { margin: 10px 0; font-size: 24px; letter-spacing: -.7px; }
+.validation-intro p { margin: 0; max-width: 280px; font-size: 13px; line-height: 1.7; color: var(--muted); }
+.validation-summary ul { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 28px; list-style: none; padding: 0; margin: 0; }
+.validation-summary button { display: block; width: 100%; padding: 0; background: transparent; border: 0; color: inherit; text-align: left; line-height: 1.5; }
+.validation-summary button strong { display: block; font-size: 13px; color: var(--green); }
+.validation-summary button span { display: block; margin-top: 4px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.validation-summary button:hover strong { text-decoration: underline; }
+@media (max-width: 650px) {
+  .validation-summary { grid-template-columns: 1fr; gap: 24px; }
+  .validation-summary ul { grid-template-columns: 1fr; gap: 18px; }
+}

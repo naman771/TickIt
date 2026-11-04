@@ -38,7 +38,7 @@ For local development, allow `http://localhost:8081,http://localhost:8083` in th
 
 ## Validation
 
-The event editor owns validation feedback. Required fields are marked with an asterisk; leaving an incomplete field shows an inline message. Saving or publishing an invalid event shows a linked error summary, focuses the first invalid field and sends no save/publish API request. Corrected fields clear their errors while editing. Native browser validation popovers are disabled only on this dynamically rendered form; the same HTML constraints and backend validation still apply.
+The event editor owns validation feedback and stays quiet while typing or leaving unfinished fields. An incomplete Publish event attempt reveals a compact finishing checklist and highlights the relevant fields. Invalid draft saves use muted inline guidance without a warning panel. Both actions focus the first invalid field and send no save/publish API request. Corrected fields clear their feedback while editing. Native browser validation popovers are disabled only on this dynamically rendered form; the same HTML constraints and backend validation still apply.
 
 Local checks cover required/whitespace values, numeric limits, date ordering, HTTPS cover URLs, guest inventory capacity, zone/ticket names and quotas, and required explanations for published schedule changes. Publishing additionally requires a description, future start and admission inventory. Saving a private draft allows an unfinished description/layout. Hidden admission-mode inputs do not block saving. Backend validation still resolves timezone ambiguity, ownership, current reservations, revisions and concurrent changes.
 
