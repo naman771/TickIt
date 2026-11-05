@@ -26,4 +26,6 @@ Notification intent commits durably; Brevo HTTPS delivery is enabled after provi
 
 ## Operational launch work
 
+Optional [Sentry backend error monitoring](MONITORING.md) is prepared, with explicit allowlisted payloads and bounded submission. Student-account redemption, a configured project and real dashboard acceptance remain required before enabling hosted reporting. [Custom-domain preparation](CUSTOM_DOMAIN.md) records the owner's `tickit` / `tick-it` preference and registry observations; no ownership or free checkout is confirmed yet.
+
 Before public live-money sales, finish production identity, merchant activation, payment/refund end-to-end acceptance, monitoring/alerts, a retained backup policy and broader load/failure testing. The [backup/restore exercise](BACKUP_RESTORE.md) verifies a read-only public-schema snapshot in an isolated local database; it does not provide retained backups or a recovery-time guarantee. The current single-instance WebSocket broker needs shared delivery before horizontal scaling. Free-host cold starts and inactivity remain limits, not a tested ticket-sale capacity guarantee. Marketplace organizer payouts/settlements and customer-requested partial cancellations are not implemented.

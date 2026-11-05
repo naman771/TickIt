@@ -2,6 +2,16 @@
 
 This document records the ticket lifecycle implementation and remaining operational work. Publication is authorized. GitHub CI and Render deployment status determine which revision is live; local test results alone do not confirm a hosted rollout.
 
+## Student benefits preparation — 5 November 2026
+
+The owner approved proceeding with Sentry monitoring and a free custom domain, preferring `tickit` or at most `tick-it`. Started from clean `17f5fd4` after the preceding rate-limit/form release was published. The rate-limit public proxy attribution acceptance recorded in the local release report remains open; this checkpoint does not resolve it.
+
+Optional explicit Sentry backend error reporting is prepared, disabled by default. It sends only allowlisted exception class/application stack metadata, with global per-instance cooldown, bounded asynchronous transport and provider-failure isolation. Tests serialize a real SDK envelope and reject request/user/context/credential leakage. No telemetry was sent externally. Account redemption, a project DSN and actual project acceptance are still needed; do not describe monitoring or alerts as live. See [monitoring activation](MONITORING.md).
+
+Final local verification: **234 tests, 231 passed, 3 optional provider skips**, zero failures/errors; executable JAR packaged. Monitoring/privacy and developer-access tests passed. OSV reported zero known advisories for the new `io.sentry:sentry:8.62.0` dependency at check time. Frontend code is unchanged in this checkpoint; browser tests were not repeated.
+
+Registry checks found `tickit.tech`, `tickit.studio`, `tickit.software` and several `tick-it` alternatives without records; the preferred preliminary candidate is `tickit.tech`. Registry absence is not a free registration guarantee. `.dev`, `.app`, `tickit.live`, and both `.me` names were already registered. Registrar browser checks require owner security verification and authenticated zero-total checkout. No domain was registered or configured. See [domain preparation](CUSTOM_DOMAIN.md), including the current Render custom-domain allowance.
+
 ## Rate limiting and organizer validation — 4 November 2026
 
 Started from clean `main` at `829bba2`; both existing Render deployments were verified live at that revision. The backend plan remains free and the hosted payment key remains test-only. No provider, database schema, queue or hosting-plan change is needed for this checkpoint.

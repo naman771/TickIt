@@ -29,6 +29,12 @@
     </properties>
 
     <dependencies>
+        <!-- Explicit, sanitized backend error reporting; no automatic request/log instrumentation. -->
+        <dependency>
+            <groupId>io.sentry</groupId>
+            <artifactId>sentry</artifactId>
+            <version>8.62.0</version>
+        </dependency>
         <!-- QR generation and uploaded/camera-frame decoding; runs entirely on our server. -->
         <dependency>
             <groupId>com.google.zxing</groupId><artifactId>core</artifactId><version>3.5.4</version>

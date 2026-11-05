@@ -1,4 +1,8 @@
-# Current local validation — 4 November 2026
+# Current local validation — 5 November 2026
+
+Optional Sentry backend monitoring: **234 tests, 231 passed, 3 external-provider skips**, zero failures/errors, executable JAR packaged. New tests inspect the real SDK envelope through an in-memory transport, verify request/user/context removal, concurrency cooldown, disabled mode, provider failure isolation and developer-only status access. No telemetry was sent externally. OSV reported zero known advisories for `io.sentry:sentry:8.62.0` at check time. Account/project activation and live acceptance are pending. No frontend code changed, so browser checks were not repeated for this checkpoint.
+
+## Previous local validation — 4 November 2026
 
 Rate limiting and organizer validation: **227 backend tests, 224 passed, 3 external-provider skips**, zero failures/errors, executable JAR build passed. **114 desktop/mobile browser checks passed**, followed by 34 focused organizer checks on the final form. Dedicated rate-limit coverage includes real Redis contention across two instances, expiry/refill, rollback of clock time, all mapped API categories, subject identity, forwarding-header spoofing, 429 headers and 503 failures. Organizer checks verify inline errors, blocked save/publish requests, correction, blur behavior, valid private drafts and admission-mode switching. These remain local evidence until the current commit's hosted rollout is verified.
 

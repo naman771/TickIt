@@ -12,6 +12,12 @@ import org.springframework.web.bind.annotation.*;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
+  private com.tickit.monitoring.BackendErrorMonitor monitor;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  public void setMonitor(com.tickit.monitoring.BackendErrorMonitor monitor) {
+    this.monitor = monitor;
+  }
 
   @ExceptionHandler(SeatAlreadyBookedException.class)
   public ResponseEntity<Map<String, Object>> handleSeatAlreadyBooked(
@@ -122,12 +128,16 @@ public class GlobalExceptionHandler {
     org.springframework.transaction.CannotCreateTransactionException.class
   })
   public ResponseEntity<Map<String, Object>> handleDependencyFailure(Exception ex) {
+    if (monitor != null)
+      monitor.report(ex, com.tickit.monitoring.BackendErrorMonitor.Kind.DEPENDENCY_503);
     return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
         .body(errorBody(503, "Reservation infrastructure is temporarily unavailable"));
   }
 
   @ExceptionHandler(Exception.class)
   public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
+    if (monitor != null)
+      monitor.report(ex, com.tickit.monitoring.BackendErrorMonitor.Kind.HTTP_500);
     log.error("Unhandled exception", ex);
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
         .body(errorBody(500, "Internal server error"));
