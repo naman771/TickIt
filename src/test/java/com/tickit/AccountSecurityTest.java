@@ -63,19 +63,6 @@ class AccountSecurityTest {
   }
 
   @Test
-  void monitoringStatusRequiresDeveloperAccessAndDoesNotExposeConnectionDetails() throws Exception {
-    mvc.perform(get("/api/developer/readiness")).andExpect(status().isUnauthorized());
-    mvc.perform(get("/api/developer/readiness").with(jwt().jwt(j -> j.subject("auth_test_owner"))))
-        .andExpect(status().isForbidden());
-    mvc.perform(
-            get("/api/developer/readiness").with(jwt().jwt(j -> j.subject("auth_test_developer"))))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.errorMonitoring.state").value("DISABLED"))
-        .andExpect(content().string(not(containsString("SENTRY_DSN"))))
-        .andExpect(content().string(not(containsString("ingest.sentry"))));
-  }
-
-  @Test
   void publicCatalogIsAccessible() throws Exception {
     mvc.perform(get("/api/events")).andExpect(status().isOk());
   }

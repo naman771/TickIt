@@ -6,13 +6,15 @@ Base URL: `http://localhost:8080`. Public event browsing does not require an acc
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | `/api/events` | Event list |
+| GET | `/api/events` | Published upcoming and ongoing events for Explore |
 | GET | `/api/events/{id}` | Event details |
 | GET | `/api/events/{id}/seats` | Seat map and ticket prices |
 | GET | `/api/public/config` | Public identity configuration and checkout availability |
 | GET | `/actuator/health` | Application health |
 
 Catalog prices use each event's configured currency. Razorpay test checkout currently supports INR only; currency conversion is never inferred from customer location.
+
+Explore excludes cancelled, deleted, draft and finished events. Finish time is the configured end time in the event's timezone, or local start time plus eight hours when no end is set. An event disappears from fresh catalog responses at its finish time; this does not delete event, booking or ticket history. Published past-event details remain accessible by their direct URL.
 
 ## Accounts and reservations
 

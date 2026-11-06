@@ -7,8 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -18,11 +18,17 @@ class BookingFlowIntegrationTest {
 
   @Autowired private MockMvc mockMvc;
   @Autowired private tools.jackson.databind.ObjectMapper json;
+  @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
   @Test
   void catalogPreservesIsoDatesNumericPricesAndExplicitNulls() throws Exception {
-    var response = mockMvc.perform(get("/api/events/1"))
-        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+    var response =
+        mockMvc
+            .perform(get("/api/events/1"))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
     var event = json.readTree(response);
     org.junit.jupiter.api.Assertions.assertTrue(event.get("startTime").isString());
     java.time.LocalDateTime.parse(event.get("startTime").asString());
@@ -34,10 +40,11 @@ class BookingFlowIntegrationTest {
     org.junit.jupiter.api.Assertions.assertTrue(event.get("minimumAge").isNull());
   }
 
-
   @Test
+  @org.springframework.transaction.annotation.Transactional
   @DisplayName("GET /api/events should return seeded events with venue information")
   void shouldReturnEventsList() throws Exception {
+    openSeedEvent();
     mockMvc
         .perform(get("/api/events"))
         .andExpect(status().isOk())
@@ -62,8 +69,10 @@ class BookingFlowIntegrationTest {
   }
 
   @Test
+  @org.springframework.transaction.annotation.Transactional
   @DisplayName("Holding an already permanently booked seat should return 409 Conflict")
   void shouldRejectHoldOnBookedSeat() throws Exception {
+    openSeedEvent();
     // Seat A1 (seatId: 1) on Event 1 was pre-booked during DataInitializer
     String requestJson =
         """
@@ -78,6 +87,15 @@ class BookingFlowIntegrationTest {
         .perform(post("/api/holds").contentType(MediaType.APPLICATION_JSON).content(requestJson))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.error", containsString("already booked")));
+  }
+
+  private void openSeedEvent() {
+    // Reused local seed data can age out. Keep this test about booked-seat rejection;
+    // its fixture-only dates are rolled back after the request.
+    jdbc.update(
+        "UPDATE event SET start_time=localtimestamp+interval '30 days',"
+            + " end_time=localtimestamp+interval '30 days 3 hours',"
+            + " sales_start=NULL,sales_end=NULL WHERE id=1");
   }
 
   @Test

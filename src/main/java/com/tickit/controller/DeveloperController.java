@@ -31,7 +31,6 @@ public class DeveloperController {
   private final UserRepository users;
   private final DataSource database;
   private final StringRedisTemplate redis;
-  private final com.tickit.monitoring.BackendErrorMonitor monitor;
 
   @Value("${app.email.enabled:false}")
   private boolean emailEnabled;
@@ -99,8 +98,6 @@ public class DeveloperController {
         payments.isEnabled() ? "TEST_ONLY" : "DISABLED",
         "email",
         Map.of("enabled", email.isEnabled(), "transport", email.getTransport()),
-        "errorMonitoring",
-        monitor.status(),
         "refundsRequiringAttention",
         jdbc.queryForObject(
             "SELECT count(*) FROM refund_job WHERE status IN ('FAILED','REVIEW')", Long.class),

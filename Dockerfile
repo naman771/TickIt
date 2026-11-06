@@ -10,6 +10,11 @@ RUN mvn dependency:go-offline -B
 COPY src ./src
 RUN mvn clean package -DskipTests
 
+# Spring Boot's extracted layout avoids nested-JAR loading on each cold start.
+# Keep the ordinary JVM compiler, schema validation and eager bean initialization.
+RUN java -Djarmode=tools -jar target/tickit-1.0.0-SNAPSHOT.jar extract \
+    --destination target/runtime --application-filename app.jar
+
 # Runtime stage
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
@@ -17,7 +22,7 @@ WORKDIR /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
-COPY --from=build /app/target/*.jar app.jar
+COPY --from=build /app/target/runtime/ ./
 
 EXPOSE 8080
 

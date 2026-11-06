@@ -63,12 +63,6 @@ spring:
 
 # ── Application ─────────────────────────────────────────
 app:
-  monitoring:
-    enabled: ${SENTRY_ENABLED:false}
-    dsn: ${SENTRY_DSN:}
-    environment: ${SENTRY_ENVIRONMENT:production}
-    release: ${RENDER_GIT_COMMIT:}
-    min-interval-seconds: 300
   payments:
     enabled: ${PAYMENTS_ENABLED:false}
     refunds-enabled: ${PAYMENT_REFUNDS_ENABLED:true}

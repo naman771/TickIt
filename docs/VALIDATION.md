@@ -1,6 +1,6 @@
-# Current local validation — 5 November 2026
+# Current local validation — 7 November 2026
 
-Optional Sentry backend monitoring: **234 tests, 231 passed, 3 external-provider skips**, zero failures/errors, executable JAR packaged. New tests inspect the real SDK envelope through an in-memory transport, verify request/user/context removal, concurrency cooldown, disabled mode, provider failure isolation and developer-only status access. No telemetry was sent externally. OSV reported zero known advisories for `io.sentry:sentry:8.62.0` at check time. Account/project activation and live acceptance are pending. No frontend code changed, so browser checks were not repeated for this checkpoint.
+Spring Boot startup and Explore filtering: **230 tests, 227 passed, 3 external-provider skips**, zero failures/errors, executable JAR packaged. The cancelled Sentry dependency, integration and its seven tests were removed before publication. Three new discovery tests cover real PostgreSQL timezone/end-time filtering, unpublished states and preserved past-event details. A dated seed fixture is opened only inside rolled-back test transactions. Startup measurements and their local-versus-hosted limits are recorded in [STARTUP.md](STARTUP.md). Frontend code is unchanged; GitHub CI repeats browser checks and builds the Linux Docker image.
 
 ## Previous local validation — 4 November 2026
 

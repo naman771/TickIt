@@ -19,6 +19,18 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
   List<Event> findByPublicationStatusOrderByStartTimeAsc(String status);
 
+  @Query(
+      value =
+          """
+          SELECT e.* FROM event e
+          WHERE e.publication_status='PUBLISHED'
+            AND (COALESCE(e.end_time,e.start_time+interval '8 hours')
+                 AT TIME ZONE e.timezone) > :now
+          ORDER BY (e.start_time AT TIME ZONE e.timezone),e.id
+          """,
+      nativeQuery = true)
+  List<Event> findDiscoverable(@Param("now") java.time.Instant now);
+
   List<Event> findByOrganizerIdOrderByCreatedAtDesc(Long ownerId);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)

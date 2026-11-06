@@ -4,9 +4,17 @@ This document records the ticket lifecycle implementation and remaining operatio
 
 ## Student benefits preparation — 5 November 2026
 
+Later owner decisions: Sentry setup was cancelled; its added MCP connection and pending sign-in were removed. Its dependency, configuration, integration and tests were removed before publication, using a new commit rather than rewriting history. On 7 November, the owner confirmed physical-phone QR scanning works. A demo video must use a real hosted website screen recording, with English captions and no voice-over; fixture screenshots must not be used as the final recording. Free-ticket checkout remains discussion only, with no implementation started.
+
+Spring Boot startup preparation on 7 November removes unused Thymeleaf and extracts the executable JAR at Docker build time. The local comparison reached health UP in a mean 4.018 s versus 6.616 s (two starts each, existing memory caps, local single-CPU-count setting). A slower compiler-restriction experiment was rejected. See [measurement conditions and deployment limits](STARTUP.md). Full startup regression verification passed: 234 tests, 231 passed, 3 optional provider skips. The Docker image cannot be built locally because Docker is unavailable. Changes are not pushed or deployed.
+
+Explore now queries only published events whose zoned end time is in the future. Missing end times use the existing eight-hour fallback after the local start time. Cancellation/deletion/draft states stay excluded, ongoing events remain visible and event/ticket history is not deleted. Filtering runs before seat/admission inventory lookups. Focused PostgreSQL/API coverage verifies timezone and exact end boundaries, missing-end fallback, unpublished states and retained direct access to ended event details. This preparation does not change the hosted catalog until release.
+
+Final release verification after removing the cancelled monitoring code: **230 tests, 227 passed, 3 optional provider skips**, zero failures/errors; executable JAR packaged. No frontend implementation changed. The owner authorized push/publication on 7 November; GitHub CI and hosted acceptance must verify this exact revision before calling it live.
+
 The owner approved proceeding with Sentry monitoring and a free custom domain, preferring `tickit` or at most `tick-it`. Started from clean `17f5fd4` after the preceding rate-limit/form release was published. The rate-limit public proxy attribution acceptance recorded in the local release report remains open; this checkpoint does not resolve it.
 
-Optional explicit Sentry backend error reporting is prepared, disabled by default. It sends only allowlisted exception class/application stack metadata, with global per-instance cooldown, bounded asynchronous transport and provider-failure isolation. Tests serialize a real SDK envelope and reject request/user/context/credential leakage. No telemetry was sent externally. Account redemption, a project DSN and actual project acceptance are still needed; do not describe monitoring or alerts as live. See [monitoring activation](MONITORING.md).
+Historical preparation included optional explicit Sentry backend error reporting. No telemetry was sent externally. The owner subsequently cancelled this work; the integration is removed from the release.
 
 Final local verification: **234 tests, 231 passed, 3 optional provider skips**, zero failures/errors; executable JAR packaged. Monitoring/privacy and developer-access tests passed. OSV reported zero known advisories for the new `io.sentry:sentry:8.62.0` dependency at check time. Frontend code is unchanged in this checkpoint; browser tests were not repeated.
 

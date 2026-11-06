@@ -32,7 +32,7 @@ public class EventController {
 
   @GetMapping
   public ResponseEntity<List<EventDto>> getAllEvents() {
-    List<Event> events = eventRepository.findByPublicationStatusOrderByStartTimeAsc("PUBLISHED");
+    List<Event> events = eventRepository.findDiscoverable(java.time.Instant.now());
     List<EventDto> dtos = events.stream().map(this::toEventDto).collect(Collectors.toList());
     return ResponseEntity.ok(dtos);
   }
