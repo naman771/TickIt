@@ -9,6 +9,14 @@ window.TickItAuth = (() => {
   let syncGeneration = 0;
   const listeners = new Set();
   const emit = () => listeners.forEach((fn) => fn(user));
+  // Keep the current workspace/deep link, without replaying temporary auth values.
+  function returnUrl() {
+    const url = new URL(location.href);
+    for (const key of [...url.searchParams.keys()]) {
+      if (key.startsWith("__clerk_")) url.searchParams.delete(key);
+    }
+    return url.href;
+  }
   async function token() {
     return clerk?.session ? clerk.session.getToken() : null;
   }
@@ -65,6 +73,10 @@ window.TickItAuth = (() => {
     clerk = window.Clerk;
     await clerk.load({
       ui: { ClerkUI: window.__internal_ClerkUICtor },
+      allowedRedirectOrigins: [location.origin],
+      signInForceRedirectUrl: returnUrl(),
+      signUpForceRedirectUrl: returnUrl(),
+      afterSignOutUrl: returnUrl(),
       appearance: {
         variables: {
           colorPrimary: "#194f43",
@@ -107,7 +119,12 @@ window.TickItAuth = (() => {
       );
       return;
     }
-    const options = { forceRedirectUrl: location.href };
+    const redirectUrl = returnUrl();
+    const options = {
+      forceRedirectUrl: redirectUrl,
+      signInForceRedirectUrl: redirectUrl,
+      signUpForceRedirectUrl: redirectUrl,
+    };
     if (kind === "sign-up") clerk.openSignUp(options);
     else clerk.openSignIn(options);
   }
@@ -119,7 +136,7 @@ window.TickItAuth = (() => {
       listeners.add(fn);
     },
     signOut: async () => {
-      if (clerk) await clerk.signOut();
+      if (clerk) await clerk.signOut({ redirectUrl: returnUrl() });
     },
     get user() {
       return user;

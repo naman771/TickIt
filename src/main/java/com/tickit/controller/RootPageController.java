@@ -14,14 +14,20 @@ public class RootPageController {
   private String organizerHost;
 
   @GetMapping("/organizer")
-  public String organizerRedirect() {
-    return "redirect:/organizer/";
+  public String organizerRedirect(HttpServletRequest request) {
+    return "redirect:/organizer/"
+        + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
+  }
+
+  @GetMapping("/organizer/")
+  public String organizerIndex() {
+    return "forward:/organizer/index.html";
   }
 
   @GetMapping("/")
   public String index(HttpServletRequest request) {
     if (organizerHost.equalsIgnoreCase(request.getServerName()))
-      return "forward:/organizer/index.html";
+      return organizerRedirect(request);
     return developerHost.equalsIgnoreCase(request.getServerName())
         ? "forward:/developer/index.html"
         : "forward:/index.html";
