@@ -332,7 +332,7 @@ test("event information and discovery fit the viewport", async ({ page }) => {
     ),
   ).toBe(true);
   await page.screenshot({
-    path: `../../work/experience-details-${test.info().project.name}.png`,
+    path: test.info().outputPath("experience-details.png"),
     fullPage: true,
   });
   await page.goto("/");
@@ -343,7 +343,7 @@ test("event information and discovery fit the viewport", async ({ page }) => {
     ),
   ).toBe(true);
   await page.screenshot({
-    path: `../../work/experience-discovery-${test.info().project.name}.png`,
+    path: test.info().outputPath("experience-discovery.png"),
     fullPage: true,
   });
 });
