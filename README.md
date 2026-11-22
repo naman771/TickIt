@@ -4,7 +4,9 @@
 
 A ticketing application with live seat selection, temporary reservations, and a checkout backed by PostgreSQL and Redis. Built with Java 21 and Spring Boot 4.0.9.
 
-[Live website](https://tickit-mpy2.onrender.com) · [Organizers](https://tickit-organizers.onrender.com) · [Developer workspace](https://tickit-mpy2.onrender.com/developer/) · [Deployment notes](docs/HOSTED_ENVIRONMENT.md)
+[Live website](https://tickit-trial-naman771.azurewebsites.net/) · [Organizers](https://tickit-trial-naman771.azurewebsites.net/organizer/) · [Developer workspace](https://tickit-trial-naman771.azurewebsites.net/developer/) · [Deployment notes](docs/HOSTED_ENVIRONMENT.md)
+
+Hosted on Azure App Service with Always On using Azure for Students credits. Razorpay remains in **test mode**. [Render customer backup](https://tickit-mpy2.onrender.com/) · [Render organizer backup](https://tickit-organizers.onrender.com/).
 
 [Getting started](#getting-started) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Walkthrough](docs/DEMO.md) · [CI](https://github.com/naman771/TickIt/actions)
 
@@ -82,6 +84,6 @@ The [organizer workspace](docs/ORGANIZERS.md) manages private event drafts, cust
 
 Without provider configuration the website permits browsing and keeps protected operations closed. Test payment checkout is connected; the API cannot issue unpaid tickets. Sample catalog seeding is opt-in for local development.
 
-[Neon setup](docs/NEON_SETUP.md) connects PostgreSQL and private workspace file storage. A [free deployment Blueprint](docs/FREE_DEPLOYMENT.md) targets Render and Neon free plans; custom domain registration and paid services are outside the current budget. See [production setup and account requirements](docs/PRODUCTION_SETUP.md).
+[Neon setup](docs/NEON_SETUP.md) connects PostgreSQL and private workspace file storage. The primary demo uses Azure student credits with Always On; the [free deployment Blueprint](docs/FREE_DEPLOYMENT.md) remains available for the retained Render/Neon setup. No live payment keys or pay-as-you-go upgrade are enabled. See [production setup and account requirements](docs/PRODUCTION_SETUP.md).
 
 [API reference](docs/API.md) · [Architecture](docs/ARCHITECTURE.md) · [Development](docs/DEVELOPMENT.md) · [Roadmap](docs/ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Asset credits](docs/ASSETS.md)
